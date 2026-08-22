@@ -1,0 +1,64 @@
+# DSH WorkBuddy Connect
+
+
+[English](./README.en.md) | 中文
+
+
+将 WorkBuddy 桌面 App 中包含的各种模型（GLM-5.3、GLM-5.2、DeepSeek-V4-Pro、DeepSeek-V4-Flash、Kimi-K3、MiniMax-M3 、Hy3等）自动接入 DeepSeek Harness，实现在 DSH 对话窗口里零配置使用。
+
+
+## 功能
+
+- **开箱即用**：安装和启用插件后，在 DSH 中直接使用，无需额外配置。
+
+
+![WorkBuddy 模型出现在 DSH 模型选择器中](assets/1.png)
+
+
+- **信息查看**：设置 → 插件 → DSH WorkBuddy Connect 卡片
+
+
+![设置卡片显示插件](assets/2.png)
+
+卡片展开后，可查看账号信息、令牌有效期与剩余积分。
+
+![设置卡片显示账号与剩余积分](assets/3.png)
+
+## 安装
+
+前置：已安装并登录 WorkBuddy 桌面 App（插件复用 App 的登录状态，账号切换自动跟随）。
+
+```sh
+# npm（推荐，自带预构建产物）
+dsh plugin --profile web add dsh-workbuddy-connect
+
+# 或从 GitHub 源码安装
+dsh plugin --profile web add github:corrinehu/dsh-workbuddy-connect
+
+dsh web
+```
+
+## 命令行
+
+`dsh plugin --profile web exec dsh-workbuddy-connect status`：登录状态与剩余积分（`--json` 输出机器可读格式；另有 `doctor` 诊断、`logout` 清理凭据）。
+
+## 已知限制
+
+- 在 macOS 与 DSH Web profile（`0.1.1-rc.2`+、Node 22+）下验证通过；Windows / Linux 的凭据默认路径未经验证，必要时可通过环境变量 `WORKBUDDY_AUTH_FILE` 指定实际位置。
+- 依赖 WorkBuddy 客户端接口（非官方开放 API），WorkBuddy 更新后插件可能需要随之调整。
+
+## 免责声明
+
+- 本项目**仅供个人学习和研究使用**，仅驱动使用者自己的 WorkBuddy 账号在本机调用，请勿用于商业用途或超出个人合理使用的场景。
+- 使用者需遵守 WorkBuddy 的服务条款；因使用本项目产生的任何后果（包括但不限于账号被限制、额度被清空、服务中断），由使用者自行承担。
+- 本项目作者不对任何因使用或滥用本项目产生的直接或间接损失负责。
+- 本项目与腾讯、WorkBuddy、DeepSeek 均无关联，未获其授权或认可；文中出现的名称仅用于描述兼容关系，其商标权利归各自所有。
+
+## 致谢
+
+- [Sliverkiss/workbuddy2api](https://github.com/Sliverkiss/workbuddy2api)（MIT）— WorkBuddy 上游协议的参照实现。
+- [franksong2702/dsh-codex-connect](https://github.com/franksong2702/dsh-codex-connect)（Apache-2.0）— DSH 插件结构与 provider 注册的参照。
+
+## 许可证
+
+[MIT](./LICENSE)
