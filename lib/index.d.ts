@@ -335,6 +335,13 @@ interface WorkBuddyAdapter {
  * Assemble the adapter. The provider's `getModels` reads the live catalog,
  * and every model's `baseUrl` is re-resolved per read so the shim's
  * ephemeral port applies from the first snapshot after startup.
+ *
+ * The profile is constructed by hand rather than through dsh-llm-pi-ai's
+ * internal `resolveProfiles()`: that helper is not part of the package's
+ * public export surface (root entry, `lib/` deep imports blocked by the
+ * exports map, `src/` not shipped), so hand-assembly is the only supported
+ * path and every newly required field must be adopted here explicitly —
+ * `modelErrors` since 0.1.5-alpha.2 (#12).
  */
 declare function createWorkBuddyAdapter(options: WorkBuddyAdapterOptions): WorkBuddyAdapter;
 //#endregion

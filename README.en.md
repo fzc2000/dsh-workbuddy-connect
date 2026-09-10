@@ -34,11 +34,14 @@ Prerequisite: the WorkBuddy desktop app is installed and signed in (the plugin r
 
 | Plugin | Required DSH core | Desktop app |
 |---|---|---|
-| **0.3.0+** | `0.1.2-rc.1` or newer | `2.0.5`+ recommended |
+| **0.3.2+** | `0.1.5-rc.1` or newer | wait for the app's bundled core to follow |
+| **0.3.0 – 0.3.1** | `0.1.2-rc.1` | `2.0.5`+ recommended |
 | **0.2.6** | `0.1.1-rc.2` (older line) | `2.0.3` / `2.0.4` |
 
-- On DSH `0.1.2-rc.1` or newer, just install the latest: `dsh plugin --profile web add dsh-workbuddy-connect`
+- On DSH `0.1.5-rc.1` or newer, just install the latest: `dsh plugin --profile web add dsh-workbuddy-connect`
+- Still on DSH `0.1.2-rc.1`? Stay on `0.3.1`: `dsh plugin --profile web add dsh-workbuddy-connect@0.3.1`
 - Still on DSH `0.1.1-rc.2`? Stay on the older release: `dsh plugin --profile web add dsh-workbuddy-connect@0.2.6`
+- The desktop app (`2.0.5` today, bundled core still `0.1.2-rc.1`) should stay on `0.3.1` until its bundled core reaches `0.1.5`
 
 The plugin runs under all three DSH interfaces: **Web**, **Desktop**, and **TUI**. Pick the install command that matches the profile you use.
 
@@ -64,7 +67,7 @@ dsh plugin --profile dsh-tui add dsh-workbuddy-connect
 dsh --profile dsh-tui
 ```
 
-> **TUI users should stay on 0.2.6**: in our testing, installing this plugin 0.3.0 on the TUI profile crashes startup with `events is not iterable` — the terminal UI package (`@deepseek-harness-tui/dsh-tui`) has not been adapted to the new DSH core yet (the fix is committed upstream, unreleased). We recommend TUI users keep DSH `0.1.1-rc.2` and plugin `0.2.6` for now, and upgrade to 0.3.0 once the terminal UI ships an adapted release.
+> **TUI users, check the version pairing**: the terminal UI package (`@deepseek-harness-tui/dsh-tui`) must be **`0.10.0-beta.5` or newer** — older versions fail at startup with `events is not iterable` when this plugin is installed. Update the shell first (via its built-in update command or a fresh install), then add this plugin; the newest release is a beta, and a stable one will work the same way.
 
 > Note: the `dsh-tui` profile requires pnpm 11 to install packages (a different pnpm on PATH fails with `ERR_PNPM_UNEXPECTED_STORE` — use `npx pnpm@11`).
 
@@ -76,7 +79,7 @@ After installing, switch to a WorkBuddy model in the model picker of the interfa
 
 ## Known limitations
 
-- Verified on macOS with the DSH Web / Desktop profiles (`0.1.2-rc.1`+, Node 22+); TUI pending a terminal-UI release adapted to 0.1.2 (see the Install section). Windows probes Local and Roaming AppData in order; WSL first reads credentials from the mounted Windows user profile. If the Windows and Linux user names differ and Windows environment variables are not forwarded into WSL, point `WORKBUDDY_AUTH_FILE` at the actual file.
+- Verified on macOS with the DSH Web / Desktop / TUI profiles (as of 0.3.2 this requires `0.1.5-rc.1`+ and Node 22+; TUI requires the terminal UI package `0.10.0-beta.5` or newer — see the Install section). Windows probes Local and Roaming AppData in order; WSL first reads credentials from the mounted Windows user profile. If the Windows and Linux user names differ and Windows environment variables are not forwarded into WSL, point `WORKBUDDY_AUTH_FILE` at the actual file.
 - Relies on WorkBuddy client interfaces (not a public API); the plugin may need updates as WorkBuddy changes.
 
 ## Disclaimer
