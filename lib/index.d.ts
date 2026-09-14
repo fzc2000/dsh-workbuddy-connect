@@ -74,6 +74,90 @@ declare function resolveAppVersion(options?: ResolveAppVersionOptions): Promise<
  */
 declare function appUserAgent(version: string): string;
 //#endregion
+//#region src/client-identity.d.ts
+/**
+ * Compiled-in CN fallback for the `WorkBuddy/<v>` tokens.
+ *
+ * Observed on the CN desktop app installed here (research §3.1, verified
+ * 2026-09-11); like the international fallback it is a shape requirement,
+ * not a currency claim — the gateway has not been observed to branch on it.
+ */
+declare const FALLBACK_CN_APP_VERSION = "5.5.6";
+/**
+ * Basename of the CN saved-version cache under `$DSH_HOME`.
+ *
+ * Deliberately not the international `.workbuddy-ai-version.json`: that file
+ * feeds the international catalog's User-Agent, and a CN App writing its
+ * version into it would relabel that request. The two caches stay isolated
+ * the way the per-variant catalog files are.
+ */
+declare const CN_APP_VERSION_FILENAME = ".workbuddy-app-version.json";
+/** The resolved identity a chat request presents as. */
+interface ChatIdentity {
+  /** Desktop App version; drives both `WorkBuddy/<v>` product tokens. */
+  clientVersion: string;
+  /** Bundled agent-CLI version; absent drops the `CLI/…` UA token. */
+  cliVersion?: string;
+}
+/**
+ * Whether a value is a CLI version that may reach a header.
+ *
+ * Tolerates a prerelease suffix (`2.137.1-rc.1`) because the bundled CLI's
+ * own metadata uses that spelling; anything with whitespace, CR or LF never
+ * passes — the value is interpolated into an HTTP header.
+ */
+declare function validCliVersion(value: unknown): value is string;
+/**
+ * The bundled agent CLI's real version, or `undefined` when it does not resolve.
+ *
+ * `cli/package.json` ships a `0.0.0` placeholder in `version` with the real
+ * version in `publishConfig.customPackage.version`; a valid non-placeholder
+ * `version` wins, otherwise the custom-package value applies, and unreadable
+ * or invalid metadata yields `undefined` (the caller drops the `CLI/…` UA
+ * token rather than guessing).
+ */
+declare function readCliVersion(bundle: string): Promise<string | undefined>;
+/**
+ * Build the chat User-Agent for one region.
+ *
+ * Throws on an invalid version rather than interpolating one into a header;
+ * `resolveChatIdentity` never produces such an identity, so the throw is a
+ * last gate against future call-site mistakes, not an expected path.
+ */
+declare function chatUserAgent(identity: ChatIdentity, region: WorkBuddyRegion): string;
+/** Constructor dependencies; every reader is injectable so tests never touch a real App or home. */
+interface ResolveChatIdentityOptions {
+  /** Installed CN desktop-bundle reader; defaults to the macOS probe. */
+  installedCn?: () => Promise<{
+    version: string;
+    bundle: string;
+  } | undefined>;
+  /** International version resolver; defaults to `app-version.ts`'s chain. */
+  resolveIntl?: () => Promise<AppVersionInfo>;
+  /** CLI-version reader; defaults to reading the bundle's `cli/package.json`. */
+  cliVersion?: (bundle: string) => Promise<string | undefined>;
+  /** CN saved-cache path; defaults to `$DSH_HOME/.workbuddy-app-version.json`. */
+  cnSavedPath?: string;
+}
+/**
+ * Resolve the chat identity for one region: installed App → region's saved
+ * value → compiled-in fallback. Never throws — a missing App, an unreadable
+ * plist, a failed cache write, or a reader that throws outright all degrade
+ * to {@link fallbackChatIdentity}; resolution never blocks a message.
+ *
+ * The production path caches per region (a message must not re-read the
+ * install tree); any injected option bypasses the cache entirely so tests
+ * with different readers cannot observe each other's resolutions.
+ */
+declare function resolveChatIdentity(region: WorkBuddyRegion, options?: ResolveChatIdentityOptions): Promise<ChatIdentity>;
+/**
+ * The region's compiled-in fallback identity: the desktop form with the
+ * built-in version and no `CLI/…` segment. This is the single degraded
+ * shape every failure path converges on — a thrown reader, an unreadable
+ * bundle, or a missing cache all present this, never the legacy CLI UA.
+ */
+declare function fallbackChatIdentity(region: WorkBuddyRegion): ChatIdentity;
+//#endregion
 //#region src/probe.d.ts
 /**
  * The canonical values a probe tests, in a fixed order.
@@ -278,6 +362,12 @@ interface WorkBuddyCatalogFetch {
 interface WorkBuddyUpstreamClientOptions {
   /** App-version resolver for international catalog requests; injectable for tests. */
   resolveAppVersion?: () => Promise<AppVersionInfo>;
+  /**
+   * Chat-identity resolver for chat and probe requests; injectable for tests.
+   * Defaults to `client-identity.ts`'s per-region chain. Refresh, catalog, and
+   * billing never consult it — those requests keep their long-standing headers.
+   */
+  resolveChatIdentity?: (region: WorkBuddyRegion) => Promise<ChatIdentity>;
 }
 /**
  * Upstream HTTP client. One instance serves the whole plugin; requests take
@@ -293,6 +383,8 @@ declare class WorkBuddyUpstreamClient {
    * Injectable so tests never read the real filesystem.
    */
   private readonly resolveAppVersion;
+  /** Chat-identity resolver; see {@link WorkBuddyUpstreamClientOptions.resolveChatIdentity}. */
+  private readonly resolveChatIdentity;
   /** Provenance of the most recent successful catalog fetch, for the card. */
   lastCatalog: WorkBuddyCatalogFetch | undefined;
   constructor(options?: WorkBuddyUpstreamClientOptions);
@@ -1048,4 +1140,4 @@ declare const Config: z<Config>;
  */
 declare function apply(ctx: Context, config: Config): void;
 //#endregion
-export { AI_VARIANT, type AppVersionInfo, CN_VARIANT, Config, FALLBACK_WORKBUDDY_AI_MODELS, FALLBACK_WORKBUDDY_MODELS, PROBE_EFFORT_CANDIDATES, type ProbeAttempt, type ProbeOutcome, type ProbeSender, type UpstreamErrorKind, WORKBUDDY_AI_SETTINGS_NS, WORKBUDDY_APP_VERSION_FILENAME, WORKBUDDY_AUTH_FILENAME, WORKBUDDY_AUTH_FILE_ENV, WORKBUDDY_CATALOG_FILENAME, WORKBUDDY_HOST_HEARTBEAT_FILENAME, WORKBUDDY_PROBE_FILENAME, WORKBUDDY_PROVIDER, WORKBUDDY_SETTINGS_NS, WORKBUDDY_STREAM_IDLE_TIMEOUT_MS, WORKBUDDY_VARIANTS, type WorkBuddyAdapter, type WorkBuddyAppVersionSource, type WorkBuddyAuthStatus, WorkBuddyCatalog, type WorkBuddyCatalogFetch, WorkBuddyCatalogStore, type WorkBuddyChatResult, type WorkBuddyCredential, WorkBuddyCredentialStore, type WorkBuddyCredits, type WorkBuddyEffort, type WorkBuddyHostHeartbeat, type WorkBuddyModelBilling, type WorkBuddyModelInfo, type WorkBuddyModelReasoning, type WorkBuddyProbeRecord, WorkBuddyProbeService, type WorkBuddyProbeStatus, WorkBuddyProbeStore, type WorkBuddyProbeValidation, type WorkBuddyPromotion, type WorkBuddyRefreshOutcome, type WorkBuddyShim, WorkBuddyUpstreamClient, type WorkBuddyUpstreamModel, type WorkBuddyVariant, appUserAgent, apply, classifyUpstreamError, clearHostHeartbeat, createWorkBuddyAdapter, createWorkBuddyShim, defaultDesktopAuthCandidates, defaultDesktopAuthPath, desktopAuthCandidatesFor, fingerprintModel, inject, installedAppVersion, isHeartbeatProcessAlive, modelWithCurrentPromotion, name, normalizeCredits, parseModelCatalog, parseWorkBuddyAuth, prepareChatBody, prepareInternationalChatBody, probeModel, processStartTimeMs, randomSentinel, readBundleVersion, readHostHeartbeat, regionOf, resolveAppVersion, validAppVersion, variantFor, workbuddyCatalogPath, workbuddyHostHeartbeatPath, workbuddyOwnAuthPath, workbuddyProbePath };
+export { AI_VARIANT, type AppVersionInfo, CN_APP_VERSION_FILENAME, CN_VARIANT, type ChatIdentity, Config, FALLBACK_CN_APP_VERSION, FALLBACK_WORKBUDDY_AI_MODELS, FALLBACK_WORKBUDDY_MODELS, PROBE_EFFORT_CANDIDATES, type ProbeAttempt, type ProbeOutcome, type ProbeSender, type ResolveChatIdentityOptions, type UpstreamErrorKind, WORKBUDDY_AI_SETTINGS_NS, WORKBUDDY_APP_VERSION_FILENAME, WORKBUDDY_AUTH_FILENAME, WORKBUDDY_AUTH_FILE_ENV, WORKBUDDY_CATALOG_FILENAME, WORKBUDDY_HOST_HEARTBEAT_FILENAME, WORKBUDDY_PROBE_FILENAME, WORKBUDDY_PROVIDER, WORKBUDDY_SETTINGS_NS, WORKBUDDY_STREAM_IDLE_TIMEOUT_MS, WORKBUDDY_VARIANTS, type WorkBuddyAdapter, type WorkBuddyAppVersionSource, type WorkBuddyAuthStatus, WorkBuddyCatalog, type WorkBuddyCatalogFetch, WorkBuddyCatalogStore, type WorkBuddyChatResult, type WorkBuddyCredential, WorkBuddyCredentialStore, type WorkBuddyCredits, type WorkBuddyEffort, type WorkBuddyHostHeartbeat, type WorkBuddyModelBilling, type WorkBuddyModelInfo, type WorkBuddyModelReasoning, type WorkBuddyProbeRecord, WorkBuddyProbeService, type WorkBuddyProbeStatus, WorkBuddyProbeStore, type WorkBuddyProbeValidation, type WorkBuddyPromotion, type WorkBuddyRefreshOutcome, type WorkBuddyShim, WorkBuddyUpstreamClient, type WorkBuddyUpstreamModel, type WorkBuddyVariant, appUserAgent, apply, chatUserAgent, classifyUpstreamError, clearHostHeartbeat, createWorkBuddyAdapter, createWorkBuddyShim, defaultDesktopAuthCandidates, defaultDesktopAuthPath, desktopAuthCandidatesFor, fallbackChatIdentity, fingerprintModel, inject, installedAppVersion, isHeartbeatProcessAlive, modelWithCurrentPromotion, name, normalizeCredits, parseModelCatalog, parseWorkBuddyAuth, prepareChatBody, prepareInternationalChatBody, probeModel, processStartTimeMs, randomSentinel, readBundleVersion, readCliVersion, readHostHeartbeat, regionOf, resolveAppVersion, resolveChatIdentity, validAppVersion, validCliVersion, variantFor, workbuddyCatalogPath, workbuddyHostHeartbeatPath, workbuddyOwnAuthPath, workbuddyProbePath };
