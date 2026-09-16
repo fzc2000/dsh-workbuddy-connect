@@ -22,13 +22,15 @@ Both the CN **WorkBuddy** and the international **WorkBuddy AI** apps are suppor
 
 - **Status and detection**: Settings → Plugins → the matching card shows the account, token validity, remaining credit, and model offers. It also lets you refresh the model list manually and shows whether the current list came from the upstream or from the built-in fallback, and provides manual reasoning-level detection for eligible models.
 
+- **Enterprise credit**: on the CN product, enterprise accounts (non-empty `enterpriseId`) read their cycle quota from the enterprise billing endpoint, and the card shows an "enterprise quota" row with the cycle reset time.
+
 - **Rate**: every model name carries its credits multiplier (e.g. `GLM-5.2 · x0.79`, `Hy3 · x0.00`) in both the `/model` popup and the composer's model dropdown. The rate is display-only and never affects requests.
 
 - **Promo badges**: promo badges (`限时免费`, `夜间折扣`) ride the model name itself (e.g. `Hy4 preview · x0.00 · 限时免费`), visible wherever you pick a model; the status card also collects currently-discounted models. Per the WorkBuddy service data, synced each time DSH starts. The international version's promotions come from the service's `modelPromotions` (which carry an effective window). Once a promotion lapses its badge is withdrawn; because the service writes the discounted value into the model's own rate field, the original price cannot be reconstructed, so that model then reports "price unavailable — refresh to update" rather than repeating the discounted rate or claiming the model is free.
 
 ![Settings card showing the plugin](assets/2.png)
 
-The expanded card has three tabs: **Status** shows the account, token validity, total credit, catalog source, and reasoning-level detection; **Context** lists each model's context window (the international version distinguishes the default window from a larger selectable one); **Details** shows per-package credit and model offers. The CN and international versions each get their own card, showing their own account's information.
+The expanded card has three tabs: **Status** shows the account, token validity, total credit, catalog source, and reasoning-level detection; **Context** lists each model's context window (where the international version offers a larger declared window, the "Use the largest declared context window" switch lives here — it is **on by default**, so DSH sizes context compression to the largest window the upstream declares; turn it off to follow the upstream default instead, and the preference persists across restarts); **Details** shows per-package credit and model offers. The CN and international versions each get their own card, showing their own account's information.
 
 ![Settings card showing account and remaining credit](assets/3.png)
 
@@ -110,6 +112,7 @@ dsh plugin --profile web exec dsh-workbuddy-connect doctor --provider workbuddy-
 - **The international version's model catalog comes from the app's own interface**: the service splits it by User-Agent, which is a private implementation detail that a server-side change can break. When that happens the plugin degrades to this account's last successful catalog and then to its built-in roster, showing the source (live / saved / built-in), the fetch time, and the failure reason on the card — but long-term compatibility is not guaranteed. The CN version's catalog uses the same interface as the official CLI and is unaffected.
 - **International-version environments not yet covered**: on Windows / WSL / Linux no reliable source for the international app's version has been located yet, so the saved value or the built-in default is used. On macOS, real-shim checks covered complete GPT-family replies, tool calls, and continued turns.
 - **Behaviour change with no credentials**: a version whose app was never signed in — and that left no plugin-owned copy — no longer shows a model group. The CN version used to display a built-in fallback list, but every model on it failed when selected.
+- **The enterprise credit path currently covers the CN product only**: the international enterprise billing interface is unverified, so those accounts still read through the personal endpoint pending measurement. The enterprise branch could not be tested locally (the development machine holds a personal account); it was implemented from the official app's interface contract, and reports from enterprise users are welcome.
 - Relies on WorkBuddy client interfaces (not a public API); the plugin may need updates as WorkBuddy changes.
 
 ## Disclaimer

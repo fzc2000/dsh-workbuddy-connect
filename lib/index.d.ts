@@ -225,6 +225,8 @@ interface WorkBuddyUpstreamModel {
   id: string;
   name: string;
   contextWindow: number;
+  /** The upstream's preferred window before an optional maximum is selected. */
+  defaultContextWindow?: number;
   maxInputTokens?: number;
   supportedContextWindows?: readonly number[];
   promotions?: readonly WorkBuddyPromotion[];
@@ -295,11 +297,24 @@ interface WorkBuddyCreditAccount {
   packageName: string;
   remain: number;
   size: number;
+  unlimited?: true;
 }
 /** Aggregated credit answer for one credential. */
 interface WorkBuddyCredits {
   total: number;
   accounts: readonly WorkBuddyCreditAccount[];
+  /**
+   * The account's cycle quota is uncapped (`limitNum === -1` on the CN
+   * enterprise endpoint).
+   *
+   * A separate flag rather than a `-1`/`0` sentinel in {@link total}: the two
+   * mean opposite things to a reader ("no limit" vs "nothing left"), and the
+   * existing negative-clamp in the personal branch would turn a sentinel into
+   * a plausible-looking zero. Every renderer must therefore test this flag
+   * first and not fall back to `total` when it is set.
+   */
+  unlimited?: true;
+  cycleResetTime?: string;
 }
 /** Token refresh answer; fields the upstream omits stay absent. */
 interface WorkBuddyRefreshOutcome {
@@ -409,8 +424,41 @@ declare class WorkBuddyUpstreamClient {
    * such rather than as a generic catalog failure.
    */
   fetchModels(credential: WorkBuddyCredential, signal?: AbortSignal): Promise<readonly WorkBuddyUpstreamModel[]>;
-  /** POST the billing endpoint for the aggregated remaining credit. */
+  /**
+   * POST the billing endpoint for the aggregated remaining credit.
+   *
+   * Two upstream shapes, chosen by account type:
+   *
+   * - **CN enterprise** (`regionOf === 'cn'` and `enterpriseId` non-empty) asks
+   *   `/v2/billing/meter/get-enterprise-user-usage`, which answers with a single
+   *   cycle quota. The personal endpoint serves these accounts an empty
+   *   `Accounts` list, which the card then renders as "0 credit" — a wrong
+   *   number rather than a visible failure (issue #31).
+   * - **Everyone else** keeps the personal endpoint unchanged.
+   *
+   * The region gate is load-bearing: the enterprise endpoint is unverified for
+   * the global region, so an international credential that happens to carry an
+   * `enterpriseId` must stay on the measured personal path instead of being
+   * moved onto an unmeasured one.
+   */
   fetchCredits(credential: WorkBuddyCredential): Promise<WorkBuddyCredits>;
+  /**
+   * CN enterprise credit read: a single cycle quota instead of a package list.
+   *
+   * Verified against the WorkBuddy desktop app (`app.asar`,
+   * `BackendProvider.getEnterpriseUsage` and `CloudAccountRepo.billing`): the
+   * body is an empty object and the account identity travels only in the
+   * headers. The two official call sites disagree on the field spelling
+   * (`limitNum`/`credit` vs `limit_num`/`used_num`), so both are accepted.
+   *
+   * A body carrying no recognisable quota field is a hard error rather than a
+   * zero. Rendering `0` for "we did not understand the answer" is exactly how
+   * issue #31 stayed invisible while users saw a plausible wrong number.
+   *
+   * The error names fields and types only: it reaches the browser, and the
+   * response body may describe the account's usage.
+   */
+  private fetchEnterpriseCredits;
   /**
    * One probe request: a real streaming chat call carrying the effort under
    * test.
@@ -704,6 +752,7 @@ declare const FALLBACK_WORKBUDDY_AI_MODELS: readonly WorkBuddyModelInfo[];
 declare class WorkBuddyCatalog {
   private models;
   private visible;
+  private useMaximumContextWindow;
   constructor(initial?: readonly WorkBuddyModelInfo[]);
   /** Current entries; empty while the variant has no usable credential. */
   current(): readonly WorkBuddyModelInfo[];
@@ -716,6 +765,8 @@ declare class WorkBuddyCatalog {
    * caller can skip an invalidation that would re-render an identical list.
    */
   setVisible(visible: boolean): boolean;
+  /** Select the largest declared international window where the upstream offers one. */
+  setUseMaximumContextWindow(useMaximum: boolean): boolean;
   /** Models to fall back to when the upstream fetch fails; ignores visibility. */
   fallback(): readonly WorkBuddyModelInfo[];
 }
@@ -1126,6 +1177,8 @@ interface Config {
    * until the user explicitly agrees.
    */
   probeConsent?: boolean;
+  /** Use the largest context window the international catalog explicitly offers. */
+  useMaximumContextWindow?: boolean;
 }
 declare const Config: z<Config>;
 /**
