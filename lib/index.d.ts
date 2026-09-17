@@ -801,12 +801,12 @@ interface WorkBuddyProbeRecord {
    *
    * An effort set is a fact about one account's entitlement as much as about
    * the model: the same model id can accept different levels under a different
-   * subscription. Without this a record outlived the account that produced it,
-   * so signing out and in as someone else inherited the previous account's
-   * detected levels. Records written before this field existed carry no
-   * identity and are therefore never reused.
+   * subscription. Records are stored under this identity and only ever served
+   * back to it, so one account never inherits another's detected levels — and
+   * because the store nests by this identity, switching back finds this
+   * account's own records intact rather than re-probing from scratch.
    */
-  account?: string;
+  account: string;
 }
 /**
  * Plugin-owned probe record path inside the Harness home.
@@ -839,8 +839,9 @@ interface WorkBuddyProbeStoreOptions {
   now?: () => number;
 }
 /**
- * The plugin's probe records: read once, written atomically, never trusted
- * across a fingerprint change or past the TTL.
+ * The plugin's probe records: read once, written atomically, keyed by the
+ * account that produced each observation, and never trusted across a
+ * fingerprint change or past the TTL.
  */
 declare class WorkBuddyProbeStore {
   private readonly path;
@@ -853,24 +854,25 @@ declare class WorkBuddyProbeStore {
   filePath(): string;
   private load;
   /**
-   * The usable record for a model, or `undefined` when there is none, it is
-   * expired, it was taken against a different catalog row, or it belongs to a
-   * different account.
+   * The usable record for one account and model, or `undefined` when there is
+   * none, it is expired, it was taken against a different catalog row, or it
+   * belongs to a different account.
    *
    * @param account - the account in effect, as `uid:enterpriseId`. Records are
    *   only returned for the account that produced them.
    */
   get(modelId: string, fingerprint: string, account: string): WorkBuddyProbeRecord | undefined;
   /**
-   * Store one observation. Only a decisive answer (`validating` /
-   * `non-validating`) replaces an existing decisive record: a transient
-   * `unknown` must not erase knowledge the user already paid for.
+   * Store one observation under the account stamped on it. Only a decisive
+   * answer (`validating` / `non-validating`) replaces an existing decisive
+   * record *of the same account*: a transient `unknown` must not erase
+   * knowledge the user already paid for.
    */
   set(modelId: string, record: WorkBuddyProbeRecord): void;
-  /** Drop every record; used by the card's explicit "clear" action. */
+  /** Drop every record of every account; used by the card's explicit "clear" action. */
   clear(): void;
-  /** Every record currently held, for status display. */
-  all(): Readonly<Record<string, WorkBuddyProbeRecord>>;
+  /** Every record currently held, grouped by account, for status display. */
+  all(): Readonly<Record<string, Readonly<Record<string, WorkBuddyProbeRecord>>>>;
   /** Build a record stamped with this store's clock, version, and account. */
   record(fingerprint: string, validation: WorkBuddyProbeValidation, efforts: readonly WorkBuddyEffort[], account: string): WorkBuddyProbeRecord;
   /**
@@ -1032,8 +1034,8 @@ interface WorkBuddyProbeServiceOptions {
    * Records are read and written against this identity, and it is re-checked
    * after the sweep finishes: an observation produced under account A must not
    * be stored once account B is in effect, however long the probe took. The
-   * caller's `clear()` on an account switch is not sufficient on its own,
-   * because an in-flight probe completes *after* that clear.
+   * store's per-account keying alone cannot catch that, because an in-flight
+   * probe completes *after* the switch has already happened.
    */
   account: () => string | undefined;
   sentinel?: SentinelFactory;
