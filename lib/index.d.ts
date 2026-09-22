@@ -4,6 +4,75 @@ import { PiAiAdapter } from "@deepseek-ai/dsh-llm-pi-ai";
 import { Context } from "@deepseek-ai/cordis";
 import { SettingsNamespace } from "@deepseek-ai/dsh-settings";
 import { AttachmentStore } from "@deepseek-ai/dsh-attachment";
+//#region src/desktop-credential-protection.d.ts
+/**
+ * WorkBuddy 5.6.x at-rest credential protection: classification, key
+ * resolution, and field decryption for the desktop app's encrypted auth file.
+ *
+ * Since WorkBuddy 5.6 the desktop app encrypts `auth.accessToken` and
+ * `auth.refreshToken` at rest (`buildPolicy: "fields"`, on by default), so the
+ * plugin reads `{$wbEncrypted:1, envelope}` wrappers instead of token strings
+ * (issues #39/#40). Everything needed to open them lives on the same machine:
+ *
+ * - the sealed payload (`{version:1, atRestSecretKey}`) comes from the
+ *   WorkBuddy-modified Electron's private `workbuddyStorage` binding, reached
+ *   by running *its own* binary once with `ELECTRON_RUN_AS_NODE=1`;
+ * - `protectorKey = sha256(atRestSecretKey, utf8)` opens the envelopes with
+ *   AES-256-GCM; the AAD builder below is transcribed from the app's own
+ *   `buildAuthenticatedContextAad` (verified live against 5.6.2, see
+ *   `docs/r3-final.js` in the working copy — not committed).
+ *
+ * The plugin process itself can never call `_linkedBinding` (it runs in DSH's
+ * Node, not the forked Electron), so the helper is spawned. The key is cached
+ * in memory only, single-flight, and re-resolved when an envelope names a
+ * different key id. Neither the payload, the key, nor any token is ever
+ * logged; error messages carry sizes, ids, and exit codes only.
+ *
+ * @module dsh-workbuddy-connect/desktop-credential-protection
+ */
+/** The four states a desktop auth document can be read as. */
+type DesktopAuthFormat = 'absent' | 'plaintext' | 'encrypted' | 'unrecognized';
+/** The spawned helper. Separated from the provider so tests can stand it in. */
+type WorkBuddyKeyPayloadSource = () => Promise<string>;
+/** Provider options. */
+interface WorkBuddyAtRestKeyProviderOptions {
+  /** Explicit Electron binary; overrides the platform default and env. */
+  electronPath?: string;
+  /** Helper timeout in milliseconds; default 10s. */
+  timeoutMs?: number;
+  /**
+   * Where the payload comes from. Defaults to spawning WorkBuddy's own
+   * Electron with `ELECTRON_RUN_AS_NODE=1`; tests supply a stand-in so no
+   * test ever touches the real binary or a real key.
+   */
+  source?: WorkBuddyKeyPayloadSource;
+}
+/**
+ * In-memory protector-key resolver: one spawn per key id, single-flight, never
+ * persisted. The cache is keyed by the id envelopes ask for, so an envelope
+ * sealed under a rotated key triggers exactly one fresh resolution.
+ */
+declare class WorkBuddyAtRestKeyProvider {
+  private readonly electronPath;
+  private readonly timeoutMs;
+  private readonly source;
+  private cache;
+  private inflight;
+  constructor(options?: WorkBuddyAtRestKeyProviderOptions);
+  /** The binary the default helper would use, for diagnostics. */
+  helperPath(): string | undefined;
+  /**
+   * A protector key matching one of the requested envelope key ids. The first
+   * id the cache answers wins; otherwise one spawn resolves the current key,
+   * which must match a request — a mismatch means the envelopes were sealed by
+   * a different install than the one this machine now runs, and no key we can
+   * reach will open them.
+   */
+  protectorKeyFor(requested: readonly string[]): Promise<Buffer>;
+  private ingest;
+  private spawnPayload;
+}
+//#endregion
 //#region src/app-version.d.ts
 /** Basename of the saved version under `$DSH_HOME`. */
 declare const WORKBUDDY_APP_VERSION_FILENAME = ".workbuddy-ai-version.json";
@@ -410,20 +479,47 @@ declare class WorkBuddyUpstreamClient {
   /**
    * GET the personal model catalog.
    *
-   * Two upstream documents feed this, one per variant:
+   * Both variants read `/v3/config`, the product document the desktop product
+   * itself fetches. CN used to read `/console/enterprises/personal/models`
+   * (the console catalog) instead, and that was why its model list drifted
+   * from the desktop App's selector: the console document lags the product
+   * one, and the product roster itself churns day to day (`auto`,
+   * `kimi-k3-1`, `minimax-m3` have each appeared and disappeared within a
+   * week).
    *
-   * - CN (`workbuddy`): `/console/enterprises/personal/models`, the document
-   *   the official CLI itself consumes. Unchanged behaviour.
-   * - International (`workbuddy-ai`): `/v3/config`, the product document the
-   *   App's main process fetches. The gateway splits it by User-Agent, so this
-   *   request carries the App-shaped UA while every other request keeps the
-   *   CLI UA it has always sent.
+   * What distinguishes the two variants here is the User-Agent, not the path:
+   * the gateway splits `/v3/config` by client identity, and the split is
+   * load-bearing. A CLI-shaped UA yields the CLI's roster — the chat models
+   * this plugin serves — while an App-shaped UA yields the App's internal
+   * roster. CN keeps the CLI UA it sends for chat, so the catalog it
+   * advertises is exactly the one its own requests can use. The international
+   * variant has no CLI identity, so it keeps the App-shaped UA.
    *
-   * Both are unwrapped and classified the same way — `readEnvelope` plus
+   * Membership is the `cli` roster intersected with the usable rows (see
+   * {@link parseModelCatalog}); the promo badges the product document does
+   * not carry are merged in from a best-effort console read — see
+   * {@link fetchPromoBadges}.
+   *
+   * Responses are unwrapped and classified the same way — `readEnvelope` plus
    * `envelopeError` — so an expired session or exhausted credit is reported as
    * such rather than as a generic catalog failure.
    */
   fetchModels(credential: WorkBuddyCredential, signal?: AbortSignal): Promise<readonly WorkBuddyUpstreamModel[]>;
+  /**
+   * Read the console catalog's promotional tags, by model id.
+   *
+   * `/v3/config` carries no `badge:<label>:<color>` tags — the discount labels
+   * the cards render (`限时免费`, `夜间折扣`, …) live only in
+   * `/console/enterprises/personal/models`. Since the roster now comes from
+   * the product document, those tags are read from the console one in a
+   * second request and merged by id.
+   *
+   * Best-effort by construction: a badge is a label on a price, so failing to
+   * read this document must not fail a catalog refresh. Every failure —
+   * network, envelope, an unreadable body — returns undefined, and the models
+   * simply ship without badges.
+   */
+  private fetchPromoBadges;
   /**
    * POST the billing endpoint for the aggregated remaining credit.
    *
@@ -485,8 +581,23 @@ declare class WorkBuddyUpstreamClient {
    */
   probeEffort(credential: WorkBuddyCredential, model: string, effort: string | undefined, signal: AbortSignal): Promise<ProbeAttempt>;
 }
-/** Parse either response shape after its envelope has been checked. */
-declare function parseModelCatalog(data: Record<string, unknown>, international?: boolean): readonly WorkBuddyUpstreamModel[];
+/**
+ * Parse either response shape after its envelope has been checked.
+ *
+ * Membership is the `cli` agent's roster, intersected with the rows that are
+ * usable: the roster is what the client identity this plugin presents is
+ * allowed to chat with, and joining rather than trusting it outright drops
+ * both ids the roster has retired and rows the document lists but cannot
+ * serve (no row, `disabled: true`, or non-positive caps all drop out here —
+ * a published-but-unservable id must never reach the picker).
+ *
+ * @param data - the unwrapped catalog/product document.
+ * @param international - whether it is the international product document, whose
+ * rows carry window objects and promotions.
+ * @param promoBadges - badge tags by model id, read from the console document,
+ * which is the only one that carries them.
+ */
+declare function parseModelCatalog(data: Record<string, unknown>, international?: boolean, promoBadges?: ReadonlyMap<string, readonly string[]>): readonly WorkBuddyUpstreamModel[];
 /**
  * One verified promotion entry.
  *
@@ -564,6 +675,15 @@ interface WorkBuddyVariant {
    * saved from one must never be served as the other's.
    */
   catalogFilename: string;
+  /**
+   * Basename of the plugin-owned per-account model-visibility file under
+   * `$DSH_HOME`.
+   *
+   * One per variant, for the same reason as the catalogs and probe records:
+   * the two endpoints share model ids, so one variant's hidden list must never
+   * answer for the other's picker.
+   */
+  visibilityFilename: string;
   /** Same-origin status route consumed by this variant's card. */
   statusPath: string;
   /** Same-origin probe-control route consumed by this variant's card. */
@@ -618,6 +738,13 @@ interface WorkBuddyStoreOptions {
   refresh: (credential: WorkBuddyCredential) => Promise<WorkBuddyRefreshOutcome>;
   /** Refresh this long before actual expiry; default five minutes. */
   refreshMarginMs?: number;
+  /**
+   * Resolver for WorkBuddy 5.6's at-rest protector key, needed when the
+   * desktop file stores encrypted token fields. Defaults to the real
+   * provider, which spawns the WorkBuddy Electron binary; tests stand in a
+   * stub. Structural so a store never depends on how the key is reached.
+   */
+  keyProvider?: Pick<WorkBuddyAtRestKeyProvider, 'protectorKeyFor' | 'helperPath'>;
 }
 /** Basename of the plugin-owned credential copy inside the Harness home. */
 declare const WORKBUDDY_AUTH_FILENAME = ".workbuddy-auth.json";
@@ -628,9 +755,12 @@ declare function workbuddyOwnAuthPath(): string;
 /**
  * Platform-default candidates for the WorkBuddy desktop app's auth file, in
  * probe order. Windows probes both AppData roots: current builds write under
- * `%LOCALAPPDATA%` (Local), older ones under `%APPDATA%` (Roaming). WSL probes
- * those same Windows locations through its mounted Windows profile before the
- * native Linux location.
+ * `%LOCALAPPDATA%` (Local), older ones under `%APPDATA%` (Roaming). Linux
+ * probes both XDG bases — most distributions write under the config home,
+ * but UOS/deepin builds write under the data home (issue #43), and probing
+ * only one silently reads a signed-in app as signed out. WSL probes those
+ * same Windows locations through its mounted Windows profile before the
+ * native Linux locations.
  */
 declare function defaultDesktopAuthCandidates(): string[];
 /**
@@ -663,6 +793,7 @@ declare class WorkBuddyCredentialStore {
   private readonly refresh;
   private readonly refreshMarginMs;
   private readonly ownPath;
+  private readonly keyProvider;
   private desktopPathOverride;
   private inflight;
   constructor(options: WorkBuddyStoreOptions);
@@ -700,9 +831,37 @@ declare class WorkBuddyCredentialStore {
    * (ENOENT) falls through to the next candidate; a file that is present
    * but unparsable is authoritative for its slot, so a stale older-version
    * file never silently wins over a broken newer one.
+   *
+   * Since WorkBuddy 5.6 the token fields may arrive in at-rest envelopes, so
+   * the text is classified before the regular parser sees it. An encrypted
+   * document must be *opened*, never skipped; an unrecognized one must fail
+   * loudly. The desktop file, as long as it exists, is the identity
+   * authority — a document this plugin cannot read must surface as a
+   * diagnosis rather than be papered over by the plugin-owned copy, which
+   * belongs to whatever account was signed in when it was last refreshed.
+   * Only an absent (or empty) file lets the probe continue.
    */
   private readDesktop;
+  /** Open a 5.6 encrypted desktop document into the regular credential shape. */
+  private openEncryptedDesktop;
+  /**
+   * Classify the first desktop candidate that exists and carries content;
+   * `absent` when none does. An empty first file is skipped so it cannot mask
+   * a real document on the next candidate. Diagnostics only — it never spawns
+   * the key helper and never decrypts, so doctor can describe the file
+   * without attempting the unlock.
+   */
+  desktopAuthFormat(): Promise<DesktopAuthFormat>;
   private readOwn;
+  /**
+   * The first desktop candidate the probe would actually read from; `undefined`
+   * when none qualifies. Semantics deliberately match the probe: empty files
+   * are skipped (the probe classifies them as absent and moves on), so on an
+   * XDG layout where the config-home file is empty but the data-home file
+   * holds the credential, diagnostics name the *data-home* file — the one
+   * authentication really uses. Like the probe it never parses or decrypts.
+   */
+  resolvedDesktopAuthPath(): Promise<string | undefined>;
   /** Whether any desktop-file candidate exists as a regular file; diagnostics only. */
   desktopFilePresent(): Promise<boolean>;
 }
@@ -712,15 +871,28 @@ declare class WorkBuddyCredentialStore {
 type WorkBuddyModelInfo = WorkBuddyUpstreamModel;
 /**
  * Static CLI models observed on the CN endpoint (re-verified against the live
- * catalog 2026-09-01, including the thinking-effort and billing metadata). The
- * upstream refresh replaces this list at startup; it exists so the provider
- * registers with a usable catalog even while the first fetch is in flight or
- * offline.
+ * `/v3/config` document 2026-09-23, including the thinking-effort and billing
+ * metadata). The upstream refresh replaces this list at startup; it exists so
+ * the provider registers with a usable catalog even while the first fetch is
+ * in flight or offline.
  *
- * The list tracks the `cli` agent's model roster exactly: the 16 models the
- * desktop CLI offers. Reasoning metadata is taken verbatim from the live
- * endpoint — each model's supported effort set and whether thinking can be
- * disabled — and the `free` flag follows the upstream `x0.00` credits marker.
+ * The list tracks the `cli` agent's model roster exactly — the 16 models it
+ * offered that day. The roster churns quickly (`auto`, `kimi-k3-1`,
+ * `minimax-m3` each appeared or vanished within days, and a competing patch's
+ * 2026-09-22 snapshot named three ids that were gone a day later), so this
+ * table is a boot-time placeholder, never a promise: the live fetch
+ * intersects the day's roster with the document's usable rows, and
+ * `tests/upstream.spec.ts` pins this table to the same parse so the two
+ * cannot drift apart silently. Reasoning metadata is verbatim from the live
+ * document, and the `free` flag follows the normalized `x0.00` credits
+ * marker.
+ *
+ * Deliberately NOT baked in: promotional badges. `限时免费` and friends are
+ * dynamic console-side promotions with no reliable validity window, so a
+ * static table would keep them alive long after the offers end. The live
+ * refresh merges the day's badges best-effort from the console document (see
+ * `fetchPromoBadges` in upstream.ts); until then the rows simply ship
+ * without them.
  */
 declare const FALLBACK_WORKBUDDY_MODELS: readonly WorkBuddyModelInfo[];
 /**
@@ -937,6 +1109,17 @@ interface WorkBuddyAdapterOptions {
    * upstream left undeclared; absent means declared-set-only behavior.
    */
   observe?: (modelId: string) => WorkBuddyProbeRecord | undefined;
+  /**
+   * Model ids the current account has hidden from the picker, resolved per
+   * read so an account switch is honored without rebuilding the adapter.
+   *
+   * Hiding is a *listing* concern only: `buildModels()` keeps serving the full
+   * catalog because pi-ai's `resolveModel`/`prepareCall` resolve from the same
+   * snapshot `listModels` reads — filtering the descriptors there would make a
+   * hidden model unresolvable and break sessions already using it. The filter
+   * therefore lives in this adapter's `listModels` override alone.
+   */
+  hidden?: () => readonly string[];
 }
 /** What {@link createWorkBuddyAdapter} hands back. */
 interface WorkBuddyAdapter {
@@ -1005,6 +1188,73 @@ declare class WorkBuddyCatalogStore {
   set(account: string, catalog: Omit<SavedCatalog, 'account'>): void;
   /** Forget one account's catalog — used when that account signs out. */
   delete(account: string): void;
+  private persist;
+}
+//#endregion
+//#region src/visibility-store.d.ts
+/**
+ * Per-account model-visibility preferences: which models the signed-in account
+ * has hidden from the DSH model picker (issue #36).
+ *
+ * A disabled *list*, deliberately not an enabled whitelist: a new account and a
+ * model the upstream adds both start visible, and an id that temporarily
+ * disappears from the catalog is kept — when the model returns it stays hidden
+ * until this account says otherwise. Entries are also kept across sign-outs, so
+ * returning to an account restores exactly what it left.
+ *
+ * One file per variant (the two endpoints share model ids but never
+ * preferences), keyed by the same `uid:enterpriseId` identity the saved
+ * catalogs and probe records use. Not a place for secrets: model-id strings
+ * only, never a token, and never written into the desktop auth file or the
+ * plugin-owned credential copy — hiding a model is a picker preference, not
+ * credential state.
+ *
+ * Why a plugin-owned file rather than a settings section: the settings sections
+ * are statically-typed schemastery objects, and `settings.yaml` is account-global
+ * — a per-uid dynamic map fits neither without weakening the schema or mixing
+ * one account's preferences into another's config. The saved-catalog and probe
+ * stores already persist per-account data this way, so this store follows them:
+ * version-tagged document, atomic write with `0o600`, and a malformed file that
+ * reads as "nothing saved" rather than throwing.
+ *
+ * @module dsh-workbuddy-connect/visibility-store
+ */
+/** Basename of the CN variant's visibility file inside the Harness home. */
+declare const WORKBUDDY_VISIBILITY_FILENAME = ".workbuddy-model-visibility.json";
+/** Plugin-owned visibility-file path inside the Harness home. */
+declare function workbuddyVisibilityPath(filename?: string): string;
+/** Options for {@link WorkBuddyVisibilityStore}. */
+interface WorkBuddyVisibilityStoreOptions {
+  /** Explicit state-file path, overriding the `$DSH_HOME` default. */
+  path?: string;
+}
+/**
+ * The per-account hidden-model lists, read once and written atomically.
+ *
+ * Unlike the saved-catalog store, a failed *write* propagates: the caller
+ * reports it to the user rather than answering "hidden" for a preference that
+ * did not persist. Reads stay forgiving — a corrupt or unreadable file is
+ * "nothing hidden", which only ever shows models the account can still pick.
+ */
+declare class WorkBuddyVisibilityStore {
+  private readonly path;
+  private accounts;
+  constructor(options?: WorkBuddyVisibilityStoreOptions | string);
+  /** Resolved state-file path, for the CLI and tests. */
+  filePath(): string;
+  private load;
+  /** The model ids one account has hidden; empty when it never hid any. */
+  disabled(account: string): readonly string[];
+  /**
+   * Show or hide one model for one account, persisting before committing.
+   *
+   * Re-enabling (showing) the last hidden model removes the account's entry
+   * entirely — an absent entry and an empty list mean the same thing
+   * (everything visible), and the file should not accumulate empty buckets.
+   * Throws when the write fails, leaving the in-memory state untouched so a
+   * re-read cannot lie about what was persisted.
+   */
+  setVisible(account: string, model: string, visible: boolean): void;
   private persist;
 }
 //#endregion
@@ -1156,15 +1406,17 @@ declare const inject: string[];
  */
 declare const WORKBUDDY_SETTINGS_NS: SettingsNamespace;
 /**
- * Settings namespace owning the international card's section.
+ * Settings namespace owning the international section.
  *
- * One namespace per card, not one shared: the settings Plugins tab dispatches a
- * card by rendering `settings.plugin.item` with `entryKey = ns` for each
- * namespace the Host serves, and skips an entry whose key names no served
- * namespace. With a single installed section, the international card registers
- * into the slot but is never rendered — the card list is built from the Host's
- * sections, not from the slot's entries. Each card therefore needs its own
- * installed section whose namespace equals the card's slot key.
+ * One namespace per variant, not one shared: each section owns only its own
+ * fields (`authFile` vs `authFileAI` and `useMaximumContextWindow`), and the
+ * sections are what `settings.yaml` and the TUI `/settings` read. On DSH 0.1.5
+ * they carry one more duty — the settings Plugins tab dispatches a card by
+ * rendering `settings.plugin.item` with `entryKey = ns` for each namespace the
+ * Host serves, so each variant's card needs a served section whose namespace
+ * equals its id. DSH 0.1.6+ ignores that pairing (its Plugins page renders the
+ * bundle's single `plugins.bundle.config` entry, keyed by package name), which
+ * costs nothing: a section that names no card renders no duplicate.
  */
 declare const WORKBUDDY_AI_SETTINGS_NS: SettingsNamespace;
 /** Plugin configuration. */
@@ -1184,6 +1436,18 @@ interface Config {
 }
 declare const Config: z<Config>;
 /**
+ * The account key model-visibility preferences are stored under: the stable
+ * identity, but only when it carries a uid.
+ *
+ * A credential whose desktop document carried no `account.uid` normalizes to
+ * an empty string; keying preferences on the resulting `":enterpriseId"` would
+ * silently share one bucket between every such account. Those accounts get no
+ * per-account preferences at all — everything stays visible and the control
+ * route explains the refusal — which is the only honest degradation: it never
+ * applies one account's hidden list to another.
+ */
+declare function visibilityAccountOf(credential: Pick<WorkBuddyCredential, 'uid' | 'enterpriseId'>): string | undefined;
+/**
  * Start both variants: their loopback endpoints, the `workbuddy` and
  * `workbuddy-ai` providers, their configuration cards, and their
  * credential-driven catalog lifecycles.
@@ -1195,4 +1459,4 @@ declare const Config: z<Config>;
  */
 declare function apply(ctx: Context, config: Config): void;
 //#endregion
-export { AI_VARIANT, type AppVersionInfo, CN_APP_VERSION_FILENAME, CN_VARIANT, type ChatIdentity, Config, FALLBACK_CN_APP_VERSION, FALLBACK_WORKBUDDY_AI_MODELS, FALLBACK_WORKBUDDY_MODELS, PROBE_EFFORT_CANDIDATES, type ProbeAttempt, type ProbeOutcome, type ProbeSender, type ResolveChatIdentityOptions, type UpstreamErrorKind, WORKBUDDY_AI_SETTINGS_NS, WORKBUDDY_APP_VERSION_FILENAME, WORKBUDDY_AUTH_FILENAME, WORKBUDDY_AUTH_FILE_ENV, WORKBUDDY_CATALOG_FILENAME, WORKBUDDY_HOST_HEARTBEAT_FILENAME, WORKBUDDY_PROBE_FILENAME, WORKBUDDY_PROVIDER, WORKBUDDY_SETTINGS_NS, WORKBUDDY_STREAM_IDLE_TIMEOUT_MS, WORKBUDDY_VARIANTS, type WorkBuddyAdapter, type WorkBuddyAppVersionSource, type WorkBuddyAuthStatus, WorkBuddyCatalog, type WorkBuddyCatalogFetch, WorkBuddyCatalogStore, type WorkBuddyChatResult, type WorkBuddyCredential, WorkBuddyCredentialStore, type WorkBuddyCredits, type WorkBuddyEffort, type WorkBuddyHostHeartbeat, type WorkBuddyModelBilling, type WorkBuddyModelInfo, type WorkBuddyModelReasoning, type WorkBuddyProbeRecord, WorkBuddyProbeService, type WorkBuddyProbeStatus, WorkBuddyProbeStore, type WorkBuddyProbeValidation, type WorkBuddyPromotion, type WorkBuddyRefreshOutcome, type WorkBuddyShim, WorkBuddyUpstreamClient, type WorkBuddyUpstreamModel, type WorkBuddyVariant, appUserAgent, apply, chatUserAgent, classifyUpstreamError, clearHostHeartbeat, createWorkBuddyAdapter, createWorkBuddyShim, defaultDesktopAuthCandidates, defaultDesktopAuthPath, desktopAuthCandidatesFor, fallbackChatIdentity, fingerprintModel, inject, installedAppVersion, isHeartbeatProcessAlive, modelWithCurrentPromotion, name, normalizeCredits, parseModelCatalog, parseWorkBuddyAuth, prepareChatBody, prepareInternationalChatBody, probeModel, processStartTimeMs, randomSentinel, readBundleVersion, readCliVersion, readHostHeartbeat, regionOf, resolveAppVersion, resolveChatIdentity, validAppVersion, validCliVersion, variantFor, workbuddyCatalogPath, workbuddyHostHeartbeatPath, workbuddyOwnAuthPath, workbuddyProbePath };
+export { AI_VARIANT, type AppVersionInfo, CN_APP_VERSION_FILENAME, CN_VARIANT, type ChatIdentity, Config, FALLBACK_CN_APP_VERSION, FALLBACK_WORKBUDDY_AI_MODELS, FALLBACK_WORKBUDDY_MODELS, PROBE_EFFORT_CANDIDATES, type ProbeAttempt, type ProbeOutcome, type ProbeSender, type ResolveChatIdentityOptions, type UpstreamErrorKind, WORKBUDDY_AI_SETTINGS_NS, WORKBUDDY_APP_VERSION_FILENAME, WORKBUDDY_AUTH_FILENAME, WORKBUDDY_AUTH_FILE_ENV, WORKBUDDY_CATALOG_FILENAME, WORKBUDDY_HOST_HEARTBEAT_FILENAME, WORKBUDDY_PROBE_FILENAME, WORKBUDDY_PROVIDER, WORKBUDDY_SETTINGS_NS, WORKBUDDY_STREAM_IDLE_TIMEOUT_MS, WORKBUDDY_VARIANTS, WORKBUDDY_VISIBILITY_FILENAME, type WorkBuddyAdapter, type WorkBuddyAppVersionSource, type WorkBuddyAuthStatus, WorkBuddyCatalog, type WorkBuddyCatalogFetch, WorkBuddyCatalogStore, type WorkBuddyChatResult, type WorkBuddyCredential, WorkBuddyCredentialStore, type WorkBuddyCredits, type WorkBuddyEffort, type WorkBuddyHostHeartbeat, type WorkBuddyModelBilling, type WorkBuddyModelInfo, type WorkBuddyModelReasoning, type WorkBuddyProbeRecord, WorkBuddyProbeService, type WorkBuddyProbeStatus, WorkBuddyProbeStore, type WorkBuddyProbeValidation, type WorkBuddyPromotion, type WorkBuddyRefreshOutcome, type WorkBuddyShim, WorkBuddyUpstreamClient, type WorkBuddyUpstreamModel, type WorkBuddyVariant, WorkBuddyVisibilityStore, appUserAgent, apply, chatUserAgent, classifyUpstreamError, clearHostHeartbeat, createWorkBuddyAdapter, createWorkBuddyShim, defaultDesktopAuthCandidates, defaultDesktopAuthPath, desktopAuthCandidatesFor, fallbackChatIdentity, fingerprintModel, inject, installedAppVersion, isHeartbeatProcessAlive, modelWithCurrentPromotion, name, normalizeCredits, parseModelCatalog, parseWorkBuddyAuth, prepareChatBody, prepareInternationalChatBody, probeModel, processStartTimeMs, randomSentinel, readBundleVersion, readCliVersion, readHostHeartbeat, regionOf, resolveAppVersion, resolveChatIdentity, validAppVersion, validCliVersion, variantFor, visibilityAccountOf, workbuddyCatalogPath, workbuddyHostHeartbeatPath, workbuddyOwnAuthPath, workbuddyProbePath, workbuddyVisibilityPath };

@@ -20,7 +20,15 @@ Both the CN **WorkBuddy** and the international **WorkBuddy AI** apps are suppor
 
 - **Reasoning levels**: levels explicitly declared by WorkBuddy appear directly — for example, GLM-5.3 and GLM-5.3-Flash offer low / high / max. For some models that do not declare selectable levels, Web and Desktop provide a **Reasoning levels** control in the model picker for a manual check. It sends a few requests and may consume credit. Models without a check result or selectable levels continue to use WorkBuddy's default.
 
-- **Status and detection**: Settings → Plugins → the matching card shows the account, token validity, remaining credit, and model offers. It also lets you refresh the model list manually and shows whether the current list came from the upstream or from the built-in fallback, and provides manual reasoning-level detection for eligible models.
+- **Status and detection**: Settings → Plugins → the matching card shows the account, token validity, remaining credit, and model offers (on DSH `0.1.6+` the entry lives in the left sidebar Plugins panel — see the version table below). It also lets you refresh the model list manually and shows whether the current list came from the upstream or from the built-in fallback, and provides manual reasoning-level detection for eligible models.
+
+- **Model visibility**: both WorkBuddy and WorkBuddy AI cards (Context window tab) let you check which models appear in the model picker. Hidden lists are **saved per signed-in account**: switching accounts switches to that account's own list, switching back restores it; new accounts and newly added models are visible by default. Hiding only affects pickability — **existing chats using a hidden model keep working**.
+
+![Model visibility in the context-window list (DSH 0.1.6+ plugin configuration page)](assets/6.png)
+
+The same UI works unchanged inside the DSH 0.1.5 settings cards:
+
+![Model visibility in a DSH 0.1.5 settings card](assets/7.png)
 
 - **Enterprise credit**: on the CN product, enterprise accounts (non-empty `enterpriseId`) read their cycle quota from the enterprise billing endpoint, and the card shows an "enterprise quota" row with the cycle reset time.
 
@@ -48,18 +56,46 @@ For models without declared levels, Web and Desktop instead use user-authorized,
 
 Prerequisite: the WorkBuddy desktop app is installed and signed in. The plugin reuses the app's sign-in state and follows account switches automatically; the same applies to the international WorkBuddy AI app, and the two do not affect each other.
 
-**Match the plugin version to your DSH core** — a mismatched combination fails to start DSH:
+**Match the plugin version to your DSH core** — from **`0.6.0`** on, one plugin version spans both core generations, removing the per-version pairing; earlier releases still pair one-to-one, and a mismatched combination fails to start DSH:
 
 | Plugin | Required DSH core | Desktop app |
 |---|---|---|
-| **0.3.2+** (international support since `0.5.0`) | `0.1.5-rc.1` or newer | `2.0.7`+ (bundled core `0.1.5-rc.1`) |
+| **0.6.0 (dual-UI adaptive)** | `0.1.5-rc.1` / `rc.2` / `rc.3`; the `0.1.6-alpha` line (incl. `alpha.1` / `alpha.2`) and `0.1.6` stable; verified against `0.1.7-alpha.1` (`0.1.7` stable is inside the range too). **Newer prereleases (e.g. `0.1.8-alpha.x`) are NOT covered automatically** — the plugin must extend its peer range first | `2.0.7`+ works today; desktop builds bundling `0.1.6+` will work too |
+| **0.3.2 – 0.5.4** (international support since `0.5.0`) | the `0.1.5-rc.1` line only (no `0.1.6+`; see [#41](https://github.com/corrinehu/dsh-workbuddy-connect/issues/41)) | `2.0.7`+ (bundled core `0.1.5-rc.1`) |
 | **0.3.0 – 0.3.1** | `0.1.2-rc.1` | `2.0.5` |
 | **0.2.6** | `0.1.1-rc.2` (older line) | `2.0.3` / `2.0.4` |
 
-- On DSH `0.1.5-rc.1` or newer, just install the latest: `dsh plugin --profile web add dsh-workbuddy-connect`
+- **`0.6.0` does not require upgrading to DSH `0.1.6` just to install WorkBuddy Connect**: the plugin adapts to whichever configuration surface the host actually provides at load time — `0.1.5` and `0.1.6+` each get their own UI, independently.
+- **Where the cards live depends on the DSH version** — each generation has its own place:
+
+  ```text
+  DSH 0.1.5 + this plugin
+  ├─ Settings → Models
+  │   └─ no WorkBuddy rows ← unified with 0.1.6+ (only plugins ≤0.5.4 still showed those old
+  │                            configurable-provider rows)
+  ├─ Settings → Plugins
+  │   ├─ DSH WorkBuddy Connect      ✅ config card (CN)
+  │   └─ DSH WorkBuddy AI Connect   ✅ config card (international)
+  └─ chat model picker
+      └─ WorkBuddy / WorkBuddy AI groups ✅
+
+  DSH 0.1.6+ + this plugin
+  ├─ Settings → Models
+  │   └─ no WorkBuddy rows          ← intentional, consistent across both generations
+  ├─ Settings → Built-in Plugins
+  │   └─ workbuddy-connect          ← read-only inventory (runtime status), no config entry
+  ├─ main UI → Plugins → workbuddy-connect → View
+  │   ├─ DSH WorkBuddy Connect      ✅ new config entry (CN)
+  │   └─ DSH WorkBuddy AI Connect   ✅ new config entry (international)
+  └─ chat model picker
+      └─ WorkBuddy / WorkBuddy AI groups ✅
+  ```
+
+- From `0.6.0` on, the Models settings page no longer shows the non-editable WorkBuddy / WorkBuddy AI cards (consistent across both core generations); the model picker, `/model`, and chat calls are unaffected.
+- On DSH `0.1.5` / `0.1.6` / `0.1.7`, just install the latest: `dsh plugin --profile web add dsh-workbuddy-connect`
 - Still on DSH `0.1.2-rc.1`? Stay on `0.3.1`: `dsh plugin --profile web add dsh-workbuddy-connect@0.3.1`
 - Still on DSH `0.1.1-rc.2`? Stay on the older release: `dsh plugin --profile web add dsh-workbuddy-connect@0.2.6`
-- The desktop app has bundled `0.1.5-rc.1` since `2.0.7`, so it can use `0.3.2` and newer directly; `2.0.5` and earlier apps (bundled `0.1.2-rc.1`) should stay on `0.3.1`
+- The desktop app has bundled `0.1.5-rc.1` since `2.0.7`, so it can use the latest plugin directly; `2.0.5` and earlier apps (bundled `0.1.2-rc.1`) should stay on `0.3.1`
 
 The plugin runs under all three DSH interfaces: **Web**, **Desktop**, and **TUI**. Pick the install command that matches the profile you use.
 
