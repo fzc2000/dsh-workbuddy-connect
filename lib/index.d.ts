@@ -4,36 +4,62 @@ import { PiAiAdapter } from "@deepseek-ai/dsh-llm-pi-ai";
 import { Context } from "@deepseek-ai/cordis";
 import { SettingsNamespace } from "@deepseek-ai/dsh-settings";
 import { AttachmentStore } from "@deepseek-ai/dsh-attachment";
-//#region src/desktop-credential-protection.d.ts
+//#region src/status-paths.d.ts
 /**
- * WorkBuddy 5.6.x at-rest credential protection: classification, key
- * resolution, and field decryption for the desktop app's encrypted auth file.
+ * Why no credential is usable, as a closed enum the browser half switches on.
  *
- * Since WorkBuddy 5.6 the desktop app encrypts `auth.accessToken` and
- * `auth.refreshToken` at rest (`buildPolicy: "fields"`, on by default), so the
- * plugin reads `{$wbEncrypted:1, envelope}` wrappers instead of token strings
- * (issues #39/#40). Everything needed to open them lives on the same machine:
- *
- * - the sealed payload (`{version:1, atRestSecretKey}`) comes from the
- *   WorkBuddy-modified Electron's private `workbuddyStorage` binding, reached
- *   by running *its own* binary once with `ELECTRON_RUN_AS_NODE=1`;
- * - `protectorKey = sha256(atRestSecretKey, utf8)` opens the envelopes with
- *   AES-256-GCM; the AAD builder below is transcribed from the app's own
- *   `buildAuthenticatedContextAad` (verified live against 5.6.2, see
- *   `docs/r3-final.js` in the working copy — not committed).
- *
- * The plugin process itself can never call `_linkedBinding` (it runs in DSH's
- * Node, not the forked Electron), so the helper is spawned. The key is cached
- * in memory only, single-flight, and re-resolved when an envelope names a
- * different key id. Neither the payload, the key, nor any token is ever
- * logged; error messages carry sizes, ids, and exit codes only.
- *
- * @module dsh-workbuddy-connect/desktop-credential-protection
+ * Deliberately separate from `reason`: `reason` is free text meant for a human
+ * to read, so matching on it would break the moment the wording changes. This
+ * is the machine-readable half, and the card uses it — never a substring of
+ * `reason` — to decide whether the Agent assist block applies.
  */
+type WorkBuddySignedOutReasonCode =
+/** Nobody is signed in; nothing diagnosable beyond that. */
+'no-credential' |
+/** A credential for the *other* product was found in this variant's file. */
+'credential-region-mismatch' |
+/** An encrypted credential exists but could not be opened (wrong key, GCM failure, helper crash). */
+'encrypted-credential-unreadable' |
+/** CN/macOS: discovery ran to completion and produced no usable candidate. */
+'electron-binary-not-found' |
+/** CN/macOS: discovery found more than one distinct usable app. */
+'electron-binary-ambiguous' |
+/** No auto-discovery for this product/platform and no explicit path configured. */
+'electron-binary-unavailable' |
+/** An explicit path (option or env) is set but missing or not executable. */
+'electron-path-invalid' |
+/** Discovery could not finish: tool missing, timeout, output overflow, unreadable plist. */
+'electron-discovery-incomplete';
+//#endregion
+//#region src/desktop-credential-protection.d.ts
 /** The four states a desktop auth document can be read as. */
 type DesktopAuthFormat = 'absent' | 'plaintext' | 'encrypted' | 'unrecognized';
 /** The spawned helper. Separated from the provider so tests can stand it in. */
 type WorkBuddyKeyPayloadSource = () => Promise<string>;
+/**
+ * Which automatic discovery, if any, this provider may run when no explicit
+ * binary is configured.
+ *
+ * `none` is the safe default: a provider that has not been told which product
+ * it serves must not reach for another product's app. `macos-workbuddy` is the
+ * CN line — the only one whose at-rest credentials and app layout have been
+ * verified live — and resolves the platform default and then Spotlight.
+ */
+type WorkBuddyElectronDiscovery = 'none' | 'macos-workbuddy';
+/** Seams the discovery flow runs through, so tests never spawn a process. */
+interface WorkBuddyDiscoveryTools {
+  /** Candidate `.app` bundles for the CN bundle id, or a throw for an unusable tool. */
+  findApps: (signal: AbortSignal) => Promise<readonly string[]>;
+  /**
+   * `CFBundleIdentifier` of a bundle, or `undefined` when the tool could not
+   * read it — which is "we could not check this candidate", never "it does not
+   * match". A successful read of a *different* id returns that id, and the
+   * caller excludes the candidate.
+   */
+  bundleIdentifier: (bundlePath: string, signal: AbortSignal) => Promise<string | undefined>;
+  /** Display version, best effort; `undefined` when unavailable. */
+  bundleVersion: (bundlePath: string, signal: AbortSignal) => Promise<string | undefined>;
+}
 /** Provider options. */
 interface WorkBuddyAtRestKeyProviderOptions {
   /** Explicit Electron binary; overrides the platform default and env. */
@@ -43,23 +69,76 @@ interface WorkBuddyAtRestKeyProviderOptions {
   /**
    * Where the payload comes from. Defaults to spawning WorkBuddy's own
    * Electron with `ELECTRON_RUN_AS_NODE=1`; tests supply a stand-in so no
-   * test ever touches the real binary or a real key.
+   * test ever touches the real binary or a real key. Supplying this replaces
+   * path *resolution* too, so tests about resolution use
+   * {@link spawnHelper} instead.
    */
   source?: WorkBuddyKeyPayloadSource;
+  /**
+   * Runs the helper at the resolved path. Distinct from {@link source}, which
+   * replaces the whole payload path: this seam keeps resolution — explicit
+   * config, platform default, discovery — real, so tests can exercise it
+   * without spawning anything.
+   */
+  spawnHelper?: (electronPath: string) => Promise<string>;
+  /**
+   * Automatic discovery budget; defaults to `'none'` (see
+   * {@link WorkBuddyElectronDiscovery}). Passed explicitly per variant at the
+   * composition root, never inferred from the environment.
+   */
+  discovery?: WorkBuddyElectronDiscovery;
+  /**
+   * Platform default binary, consulted only when `discovery` is enabled and no
+   * explicit path is configured. Injectable so tests can force the fallback
+   * branch without moving the real app; `null` means "no default here".
+   */
+  defaultElectronPath?: string | undefined;
+  /** Discovery subprocesses; injectable so tests never spawn. */
+  tools?: WorkBuddyDiscoveryTools;
+  /**
+   * Total budget for one discovery run, covering the search and every
+   * candidate check. Injectable so tests can exercise exhaustion without
+   * waiting out the production 10s.
+   */
+  discoveryBudgetMs?: number;
 }
 /**
  * In-memory protector-key resolver: one spawn per key id, single-flight, never
  * persisted. The cache is keyed by the id envelopes ask for, so an envelope
  * sealed under a rotated key triggers exactly one fresh resolution.
- */
-declare class WorkBuddyAtRestKeyProvider {
-  private readonly electronPath;
+ */ declare class WorkBuddyAtRestKeyProvider {
+  /**
+   * The explicit binary, when one was configured. `undefined` here means "the
+   * caller did not name one", which is what lets discovery run — an explicit
+   * path that turns out to be unusable is an error, never a reason to look for
+   * a different app.
+   */
+  private readonly explicitPath;
+  private readonly defaultPath;
+  private readonly discovery;
+  private readonly tools;
+  private readonly discoveryBudgetMs;
   private readonly timeoutMs;
   private readonly source;
+  private readonly spawnHelper;
+  /**
+   * The path discovery settled on, cached only on success. A failure leaves
+   * this unset so the next attempt tries again — the user may install or move
+   * the app without restarting DSH.
+   */
+  private discoveredPath;
   private cache;
   private inflight;
   constructor(options?: WorkBuddyAtRestKeyProviderOptions);
-  /** The binary the default helper would use, for diagnostics. */
+  /**
+   * The binary the default helper would use, for diagnostics.
+   *
+   * Reports a *discovery result* once one exists, so diagnostics describe what
+   * would actually run rather than the default that was bypassed. Discovery
+   * itself stays in {@link resolveElectronPath}: this accessor never triggers a
+   * search (the constructor must remain I/O-free, and callers may ask before
+   * any resolution has happened).
+   */
   helperPath(): string | undefined;
   /**
    * A protector key matching one of the requested envelope key ids. The first
@@ -70,7 +149,25 @@ declare class WorkBuddyAtRestKeyProvider {
    */
   protectorKeyFor(requested: readonly string[]): Promise<Buffer>;
   private ingest;
+  /**
+   * The binary to spawn, or a diagnosable error saying why there is none.
+   *
+   * Order is the contract: an explicit path is used as-is and never falls back;
+   * discovery runs only for a provider that was configured for it, and only
+   * after the platform default has been tried and found unusable.
+   */
+  private resolveElectronPath;
+  /**
+   * Resolve the CN app through Spotlight, then prove each candidate's identity
+   * before it can be executed.
+   *
+   * The whole flow shares one budget: a hang in one candidate must not extend
+   * the wait for the others, and running out of budget is reported as an
+   * unfinished check rather than an absent app.
+   */
+  private discoverMacosApp;
   private spawnPayload;
+  private spawnAt;
 }
 //#endregion
 //#region src/app-version.d.ts
@@ -726,6 +823,11 @@ interface WorkBuddyAuthStatus {
    * Present only on `signed-out`, and never a substitute for fixing the file.
    */
   reason?: string;
+  /**
+   * Machine-readable companion to {@link reason}, for callers that must branch
+   * on the cause. Never derived by matching `reason` text.
+   */
+  reasonCode?: WorkBuddySignedOutReasonCode;
 }
 /** Constructor options; only {@link refresh} is required. */
 interface WorkBuddyStoreOptions {
@@ -1362,8 +1464,9 @@ declare function readHostHeartbeat(): Promise<WorkBuddyHostHeartbeat | undefined
  * - macOS / Linux: `ps -o lstart=` prints a local-time "EEE MMM DD HH:MM:SS YYYY";
  *   `Date.parse` resolves it against the local clock, which matches how
  *   `registeredAt` (a `Date.now()` absolute value) is expressed.
- * - Windows: WMI `CreationDate` is UTC (`YYYYMMDDHHMMSS.mmm+zzzz`); parsed with
- *   `Date.UTC`, again comparable to `registeredAt`.
+ * - Windows: `wmic` prints a CIM_DATETIME `CreationDate` — local fields plus a
+ *   signed minute offset (see {@link parseWmiCreationDate}); the epoch it
+ *   yields is comparable to `registeredAt`.
  *
  * Failures return `undefined` so callers can fall back to plain PID liveness
  * rather than mis-report a running host as dead.
