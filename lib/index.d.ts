@@ -1,6 +1,6 @@
 import z from "@deepseek-ai/schemastery";
 import "@earendil-works/pi-ai";
-import { PiAiAdapter } from "@deepseek-ai/dsh-llm-pi-ai";
+import { PiAiAdapter, PiAiAdapterOptions } from "@deepseek-ai/dsh-llm-pi-ai";
 import { Context } from "@deepseek-ai/cordis";
 import { SettingsNamespace } from "@deepseek-ai/dsh-settings";
 import { AttachmentStore } from "@deepseek-ai/dsh-attachment";
@@ -1206,6 +1206,8 @@ interface WorkBuddyAdapterOptions {
   catalog: WorkBuddyCatalog;
   /** Resolve the durable attachment service at request time, when present. */
   resolveAttachments?: () => AttachmentStore | undefined;
+  /** Resolve one image's path in the current model-tool execution world. */
+  resolveImageAccess?: NonNullable<PiAiAdapterOptions['resolveImageAccess']>;
   /**
    * Look up a local probe observation for a model. Consulted only for rows the
    * upstream left undeclared; absent means declared-set-only behavior.
