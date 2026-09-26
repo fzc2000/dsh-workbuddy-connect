@@ -154,6 +154,7 @@ dsh plugin --profile web exec dsh-workbuddy-connect doctor --provider workbuddy-
 ## 已知限制
 
 - 在 macOS 的 DSH Web / Desktop / TUI 下验证通过（0.3.2 起要求 `0.1.5-rc.1`+、Node 22+；TUI 需终端界面插件 `0.10.0-beta.5` 及以上，见安装章节说明）。Windows 会依次探测 Local 与 Roaming AppData；WSL 会优先从挂载的 Windows 用户目录读取登录凭据。若 Windows 与 Linux 用户名不同且 Windows 环境变量未传入 WSL，请通过 `WORKBUDDY_AUTH_FILE`（国际版为 `WORKBUDDY_AI_AUTH_FILE`）指定实际位置。
+- **加密桌面凭据的解密程序定位**：国内版 macOS 使用已验证的 App 发现；Windows 先检查 `%LOCALAPPDATA%\Programs\WorkBuddy\WorkBuddy.exe`，再检查 WorkBuddy 卸载注册表记录。若自动定位仍不可用，可设置 `WORKBUDDY_ELECTRON_BIN` 指向实际的 `WorkBuddy.exe`，然后完全退出并重启 DSH（插件在构造时读取该变量）。Linux 没有内置自动定位；失败时卡片提供 Agent Assist，显式环境变量仍可用。国际版不启用 Windows 自动定位。
 - **国际版的模型目录来自 App 界面接口**：服务端按 User-Agent 分流下发，属私有实现，上游改动可能使其失效。届时插件按「本账号上次成功目录 → 内置目录」降级，并在卡片上标明来源（实时 / 已保存 / 内置）、更新时间与失败原因，但不能保证长期兼容。国内版目录走官方 CLI 同款接口，不受此影响。
 - **国际版仍未覆盖的环境**：Windows / WSL / Linux 下国际版 App 的版本读取尚未找到可靠来源，会退回最近保存的版本或内置值。macOS 上已通过真实 shim 验证 GPT 系完整回复、工具调用与续轮。
 - **无凭据时的行为变化**：某版 App 从未登录、也没留下插件自留副本时，该版模型分组不再显示。此前国内版会显示一份内置兜底列表，但那些模型选了必然报错。
