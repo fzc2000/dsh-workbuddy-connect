@@ -20,9 +20,9 @@ type WorkBuddySignedOutReasonCode =
 'credential-region-mismatch' |
 /** An encrypted credential exists but could not be opened (wrong key, GCM failure, helper crash). */
 'encrypted-credential-unreadable' |
-/** CN on a supported platform: discovery ran to completion and found no usable candidate. */
+/** A product on a supported platform: discovery ran to completion and found no usable candidate. */
 'electron-binary-not-found' |
-/** CN on a supported platform: discovery found more than one distinct usable app. */
+/** A product on a supported platform: discovery found more than one distinct usable app. */
 'electron-binary-ambiguous' |
 /** No auto-discovery for this product/platform and no explicit path configured. */
 'electron-binary-unavailable' |
@@ -619,6 +619,15 @@ interface WorkBuddyVariant {
   region: WorkBuddyRegion;
   /** Env var overriding the desktop auth-file location. */
   env: string;
+  /**
+   * How this product's Electron helper is identified and located.
+   *
+   * Optional for source compatibility: `WorkBuddyVariant` is a public type and
+   * existing callers construct their own descriptors without it. Resolution
+   * falls back to {@link electronProfileFor}, keyed by variant id — an
+   * unknown id stays on the CN profile, the store's other legacy default.
+   */
+  electron?: WorkBuddyElectronProduct;
   /** Basename of the desktop app's own auth file in the shared auth directory. */
   desktopFilename: string;
   /** Basename of the plugin-owned credential copy under `$DSH_HOME`. */
@@ -647,6 +656,39 @@ interface WorkBuddyVariant {
   /** Same-origin probe-control route consumed by this variant's card. */
   probePath: string;
 }
+/**
+ * How one product's Electron key helper is identified on each platform, and
+ * which env var names an explicit binary for it (issues #59/#60).
+ *
+ * The profile is the *only* place product identity enters helper resolution —
+ * never the discovery setting, which only says whether a platform may be
+ * searched at all: two products on the same platform differ by bundle id /
+ * registry name / exe basename, so a discovery that matches one can never
+ * legitimately execute the other's binary.
+ */
+interface WorkBuddyElectronProduct {
+  /** Product name for helper diagnostics and error copy, e.g. `WorkBuddy AI`. */
+  productName: string;
+  /** Env var naming an explicit Electron binary for this product alone. */
+  envVar: string;
+  /** macOS identity and default install layout, verified per product. */
+  macOS: {
+    bundleId: string;
+    defaultPath: string;
+  };
+  /**
+   * Windows identity from the uninstall registry and the exe it names.
+   * `defaultPathSegments` exists only where the default install location has
+   * been measured (CN); the international app has only been seen in
+   * user-chosen locations, so it stays registry-only — an unverified default
+   * is a guess, and guessing is how the wrong app gets executed.
+   */
+  windows: {
+    displayNamePattern: RegExp;
+    exeBasename: string;
+    defaultPathSegments?: readonly string[];
+  };
+}
 /** CN WorkBuddy first: the existing provider keeps its id, paths, and copy. */
 declare const WORKBUDDY_VARIANTS: readonly WorkBuddyVariant[];
 /** The CN variant; the plugin's long-standing default and compatibility anchor. */
@@ -665,15 +707,16 @@ type WorkBuddyKeyPayloadSource = () => Promise<string>;
  * Which automatic discovery, if any, this provider may run when no explicit
  * binary is configured.
  *
- * `none` is the safe default: a provider that has not been told which product
- * it serves must not reach for another product's app. The CN line selects a
- * platform-specific discovery only where that platform's app layout has been
- * verified; Global remains `none`.
+ * The value says which *platform* may be searched, never which product: two
+ * products on the same platform are told apart by the product profile
+ * ({@link WorkBuddyElectronProduct} — bundle id, registry name, exe basename),
+ * so a search for one can never execute the other's binary. `none` remains the
+ * safe default for platforms without a verified layout (Linux today).
  */
 type WorkBuddyElectronDiscovery = 'none' | 'macos-workbuddy' | 'windows-workbuddy';
 /** Seams the discovery flow runs through, so tests never spawn a process. */
 interface WorkBuddyDiscoveryTools {
-  /** Candidate `.app` bundles for the CN bundle id, or a throw for an unusable tool. */
+  /** Candidate `.app` bundles for the product's bundle id, or a throw for an unusable tool. */
   findApps: (signal: AbortSignal) => Promise<readonly string[]>;
   /**
    * `CFBundleIdentifier` of a bundle, or `undefined` when the tool could not
@@ -691,6 +734,15 @@ interface WorkBuddyWindowsDiscoveryTools {
 }
 /** Provider options. */
 interface WorkBuddyAtRestKeyProviderOptions {
+  /**
+   * Which product's Electron this provider resolves. Required and the only
+   * source of product identity: it names the explicit-path env var, the bundle
+   * id / registry name / exe basename discovery must match, and the platform
+   * default. Without it the provider could not even decide which env var to
+   * read — the discovery setting alone cannot carry this (both products are
+   * `none` on Linux, yet each must read its own variable).
+   */
+  product: WorkBuddyElectronProduct;
   /** Explicit Electron binary; overrides the platform default and env. */
   electronPath?: string;
   /** Helper timeout in milliseconds; default 10s. */
@@ -747,6 +799,7 @@ interface WorkBuddyAtRestKeyProviderOptions {
    * a different app.
    */
   private readonly explicitPath;
+  private readonly product;
   private readonly defaultPath;
   private readonly discovery;
   private readonly tools;
@@ -764,7 +817,7 @@ interface WorkBuddyAtRestKeyProviderOptions {
   private discoveredPath;
   private cache;
   private inflight;
-  constructor(options?: WorkBuddyAtRestKeyProviderOptions);
+  constructor(options: WorkBuddyAtRestKeyProviderOptions);
   /**
    * The binary the default helper would use, for diagnostics.
    *
@@ -793,8 +846,8 @@ interface WorkBuddyAtRestKeyProviderOptions {
    */
   private resolveElectronPath;
   /**
-   * Resolve the CN app through Spotlight, then prove each candidate's identity
-   * before it can be executed.
+   * Resolve this product's app through Spotlight, then prove each candidate's
+   * identity before it can be executed.
    *
    * The whole flow shares one budget: a hang in one candidate must not extend
    * the wait for the others, and running out of budget is reported as an
@@ -802,9 +855,10 @@ interface WorkBuddyAtRestKeyProviderOptions {
    */
   private discoverMacosApp;
   /**
-   * Resolve the CN app through Windows uninstall records. Registry entries
-   * provide hints, not trust: every DisplayIcon candidate must still be a
-   * WorkBuddy Electron binary with the known Electron layout before execution.
+   * Resolve this product's app through Windows uninstall records. Registry
+   * entries provide hints, not trust: every DisplayIcon candidate must still
+   * be the product's Electron binary with the known Electron layout before
+   * execution.
    */
   private discoverWindowsApp;
   private spawnPayload;
