@@ -60,7 +60,8 @@ Prerequisite: the WorkBuddy desktop app is installed and signed in. The plugin r
 
 | Plugin | Required DSH core | Desktop app |
 |---|---|---|
-| **0.6.0 (dual-UI adaptive)** | `0.1.5-rc.1` / `rc.2` / `rc.3`; the `0.1.6-alpha` line (incl. `alpha.1` / `alpha.2`) and `0.1.6` stable; verified against `0.1.7-alpha.1` (`0.1.7` stable is inside the range too). **Newer prereleases (e.g. `0.1.8-alpha.x`) are NOT covered automatically** — the plugin must extend its peer range first | `2.0.7`+ works today; desktop builds bundling `0.1.6+` will work too |
+| **0.6.0 (dual-UI adaptive)** | `0.1.5-rc.1` / `rc.2` / `rc.3`; the `0.1.6-alpha` line (incl. `alpha.1` / `alpha.2`) and `0.1.6` stable; verified against `0.1.7-alpha.1` (`0.1.7` stable is inside the range too). **Subsequent `0.1.x` prereleases (e.g. `0.1.8-alpha.x`) DO fall inside the `^0.1.7-alpha.1` arm** — the host's compatibility check resolves peer ranges with includePrerelease semantics (our earlier "not covered" claim was wrong; corrected here); prereleases crossing into `0.2.0` are the ones that need an explicit peer-range extension | `2.0.7`+ works today; desktop builds bundling `0.1.6+` will work too |
+| **0.6.5** | adds `0.2.0-rc.1` on top of the `0.6.0` surface (`0.1.5` / `0.1.6` / `0.1.7` unchanged), verified on a real `0.2.0-rc.1` host (web: loading, catalogs, encrypted credentials, chat & image round-trips all fine). Releases up to and including `0.6.4` do not carry that range and are skipped wholesale by DSH `0.2.0-rc.1` (see [#63](https://github.com/corrinehu/dsh-workbuddy-connect/issues/63)) | `2.0.7`+; core compatibility extended to `0.2.0-rc.1` (verified on web; desktop builds not yet verified) |
 | **0.3.2 – 0.5.4** (international support since `0.5.0`) | the `0.1.5-rc.1` line only (no `0.1.6+`; see [#41](https://github.com/corrinehu/dsh-workbuddy-connect/issues/41)) | `2.0.7`+ (bundled core `0.1.5-rc.1`) |
 | **0.3.0 – 0.3.1** | `0.1.2-rc.1` | `2.0.5` |
 | **0.2.6** | `0.1.1-rc.2` (older line) | `2.0.3` / `2.0.4` |
@@ -92,7 +93,7 @@ Prerequisite: the WorkBuddy desktop app is installed and signed in. The plugin r
   ```
 
 - From `0.6.0` on, the Models settings page no longer shows the non-editable WorkBuddy / WorkBuddy AI cards (consistent across both core generations); the model picker, `/model`, and chat calls are unaffected.
-- On DSH `0.1.5` / `0.1.6` / `0.1.7`, just install the latest: `dsh plugin --profile web add dsh-workbuddy-connect`
+- On DSH `0.1.5` / `0.1.6` / `0.1.7` / `0.2.0-rc.1`, just install the latest: `dsh plugin --profile web add dsh-workbuddy-connect`
 - Still on DSH `0.1.2-rc.1`? Stay on `0.3.1`: `dsh plugin --profile web add dsh-workbuddy-connect@0.3.1`
 - Still on DSH `0.1.1-rc.2`? Stay on the older release: `dsh plugin --profile web add dsh-workbuddy-connect@0.2.6`
 - The desktop app has bundled `0.1.5-rc.1` since `2.0.7`, so it can use the latest plugin directly; `2.0.5` and earlier apps (bundled `0.1.2-rc.1`) should stay on `0.3.1`
