@@ -70,7 +70,8 @@ WorkBuddy 中模型的推理档位信息目前分散在上游接口与客户端�
 
 | 插件版本 | 要求的 DSH 核心 | 桌面 App |
 |---|---|---|
-| **0.7.0（0.2.0 世代）** | **仅支持 `0.2.0-rc.1` / `0.2.0-rc.2`**（`0.1.5` / `0.1.6` / `0.1.7` 不再支持，用户请停留在 `0.6.5`），已在 `0.2.0-rc.2` 真机实测（web 端：加载、国内版与国际版目录、加密凭据、状态路由正常）。这是适配 DSH `0.2.0` 设置服务改造的版本——`0.2.0` 把设置服务换成了 Config 表单门面，移除了旧的 `installSection` 接口，早期版本在上面会丢失设置项 | 内置 `0.2.0` 内核的桌面版（预览 / nightly） |
+| **0.7.1（当前稳定版）** | **仅支持 `0.2.0-rc.2`**（`0.2.0-rc.1` 用户请停留在 `0.7.0`），并把 `@earendil-works/pi-ai` peer 从 `^0.85.1 \|\| ^0.87.1` 收窄为 **`^0.87.1`**：从 `0.6.x` 原地升级的 pnpm profile 不再因旧 `pi-ai@0.85.1` 仍在范围内而被保留、复现 [#69](https://github.com/corrinehu/dsh-workbuddy-connect/issues/69) 的两代混用（[#74](https://github.com/corrinehu/dsh-workbuddy-connect/issues/74)）。**从 `0.6.5` 原地升级已实测**：编辑 `package.json` 后 `pnpm install`，插件即解析到 `pi-ai@0.87.1`，无需任何 override；同时在 `0.7.0` 上复现了双臂范围放行 `0.85.1` 的原行为作为对照。 | 内置 `0.2.0-rc.2` 内核的桌面版（预览 / nightly） |
+| **0.7.0（0.2.0 世代首发）** | **仅支持 `0.2.0-rc.1` / `0.2.0-rc.2`**（`0.1.5` / `0.1.6` / `0.1.7` 不再支持，用户请停留在 `0.6.5`），已在 `0.2.0-rc.2` 真机实测（web 端：加载、国内版与国际版目录、加密凭据、状态路由正常）。这是适配 DSH `0.2.0` 设置服务改造的版本——`0.2.0` 把设置服务换成了 Config 表单门面，移除了旧的 `installSection` 接口，早期版本在上面会丢失设置项。**`0.7.1` 起不再支持 `rc.1`** | 内置 `0.2.0` 内核的桌面版（预览 / nightly） |
 | **0.6.0（双界面自适应）** | `0.1.5-rc.1` / `rc.2` / `rc.3`；`0.1.6-alpha` 系列（含 `alpha.1` / `alpha.2`）与 `0.1.6` 正式版；已实测 `0.1.7-alpha.1`（`0.1.7` 正式版同样在范围内）。**后续 `0.1.x` prerelease（如 `0.1.8-alpha.x`）同样落在 `^0.1.7-alpha.1` 区间内**——宿主兼容判定按 includePrerelease 语义解析 peer range（早先「不自动覆盖」的说法有误，已更正）；跨入 `0.2.0` 的 prerelease 才需要插件显式扩展 peer range | `2.0.7`+ 可直接使用；搭载 `0.1.6+` 核心的桌面版发布后同样适用 |
 | **0.6.5（`0.1.x` 线最终版）** | 在 `0.6.0` 的支持面上追加 `0.2.0-rc.1`（`0.1.5` / `0.1.6` / `0.1.7` / `0.2.0-rc.1`），已在 `0.2.0-rc.1` 真机实测（web 端：加载、目录、加密凭据、对话与图片往返正常）。已发布的 `0.6.4` 及更早版本不含该区间，在 DSH `0.2.0-rc.1` 上会被宿主整体跳过（见 [#63](https://github.com/corrinehu/dsh-workbuddy-connect/issues/63)） | 内置 `0.1.x` 内核的桌面版（含 `2.0.7` 起的已发布正式版）；`0.2.0-rc.1` 亦可（web 已实测，桌面版待实测） |
 | **0.3.2 – 0.5.4**（国际版支持自 `0.5.0`） | `0.1.5-rc.1` 系列（不支持 `0.1.6+`，见 [#41](https://github.com/corrinehu/dsh-workbuddy-connect/issues/41)） | `2.0.7`+（内置核心已跟进 `0.1.5-rc.1`） |
@@ -104,7 +105,8 @@ WorkBuddy 中模型的推理档位信息目前分散在上游接口与客户端�
   ```
 
 - 自 `0.6.0` 起，Models 设置页不再显示 WorkBuddy / WorkBuddy AI 的不可编辑卡片（两代核心行为一致）；模型选择器、`/model` 与对话调用不受影响。
-- DSH `0.2.0-rc.1` / `0.2.0-rc.2` 的用户，安装最新版即可：`dsh plugin --profile web add dsh-workbuddy-connect`
+- DSH `0.2.0-rc.2` 的用户，安装最新版即可：`dsh plugin --profile web add dsh-workbuddy-connect`；还在 `0.2.0-rc.1` 的用户请停留在 `0.7.0`：`dsh plugin --profile web add dsh-workbuddy-connect@0.7.0`
+- 从 `0.6.x` 原地升级的 pnpm profile（曾手动装过 `pi-ai@0.85.1`）：升级到 `0.7.1+` 后 peer 范围不再接受 `0.85.1`，`pnpm install` 会把插件解析到宿主同代的 `0.87.1`；此前按 [#74](https://github.com/corrinehu/dsh-workbuddy-connect/issues/74) 临时加过的 `overrides: {'@earendil-works/pi-ai': 0.87.1}` 可以删掉了
 - 还在用 DSH `0.1.5` / `0.1.6` / `0.1.7` 的用户，请停留在 `0.6.5`：`dsh plugin --profile web add dsh-workbuddy-connect@0.6.5`
 - 还在用 DSH `0.1.2-rc.1` 的用户，请停留在 `0.3.1`：`dsh plugin --profile web add dsh-workbuddy-connect@0.3.1`
 - 还在用 DSH `0.1.1-rc.2` 的用户，请停留在 `0.2.6`：`dsh plugin --profile web add dsh-workbuddy-connect@0.2.6`
