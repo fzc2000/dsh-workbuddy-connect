@@ -330,6 +330,49 @@ interface WorkBuddyCreditAccount {
   remain: number;
   size: number;
   unlimited?: true;
+  /**
+   * When the package's own cycle ends, in epoch milliseconds.
+   *
+   * The upstream has always sent this (`CycleEndTime`, a zone-less
+   * `YYYY-MM-DD HH:mm:ss` string) and the query itself already filters on
+   * `PackageEndTimeRange`, but the field used to be dropped here — so a card
+   * could show "500 credit" for a package expiring in an hour with nothing to
+   * distinguish it from one expiring next month. Absent when the upstream omits
+   * or malforms it, which must never read as "no expiry".
+   *
+   * The zone the upstream means is **not established**: reading the string as
+   * the running machine's local time follows the official desktop client (see
+   * {@link parseCycleEndTime}), and is not a claim about the account's zone.
+   */
+  endTimeMs?: number;
+}
+/** Credit whose package expires within a horizon the user should act on. */
+interface WorkBuddyExpiringCredits {
+  /** Sum of {@link WorkBuddyCreditAccount.remain} over the window. */
+  total: number;
+  /** How many packages contribute to {@link total}. */
+  packages: number;
+  /** The soonest `endTimeMs` among them. */
+  earliestEndTimeMs?: number;
+}
+/**
+ * Credit at risk, bucketed by how soon it lapses.
+ *
+ * Thresholds are calendar-ish (24h / 3d / 7d) rather than "this month": a package
+ * expiring at 08:00 tomorrow is not helped by a monthly average, and the upstream
+ * genuinely staggers expiries per package.
+ *
+ * Only *future* horizons are reported. An already-lapsed package is deliberately
+ * **not** summarised here: the personal billing query this feeds filters
+ * `Status: [0, 3]` (`valid` + `usedUp`) from the current time forward, while the
+ * upstream marks a lapsed package `Status: 2` (`expired`) — a status this query
+ * never returns. Historical expiry would need its own query, which is out of
+ * scope.
+ */
+interface WorkBuddyCreditExpiry {
+  within24h: WorkBuddyExpiringCredits;
+  within3d: WorkBuddyExpiringCredits;
+  within7d: WorkBuddyExpiringCredits;
 }
 /** Aggregated credit answer for one credential. */
 interface WorkBuddyCredits {
@@ -347,6 +390,13 @@ interface WorkBuddyCredits {
    */
   unlimited?: true;
   cycleResetTime?: string;
+  /**
+   * Credit lapsing soon, so a card can warn instead of only reporting a total.
+   *
+   * Absent when no account carried a usable end time — the plugin must not
+   * claim "nothing expires soon" on the strength of data it never received.
+   */
+  expiry?: WorkBuddyCreditExpiry;
 }
 /** Token refresh answer; fields the upstream omits stay absent. */
 interface WorkBuddyRefreshOutcome {
@@ -609,6 +659,22 @@ declare function modelWithCurrentPromotion(model: WorkBuddyUpstreamModel, now?: 
  * JSON object is returned unchanged, exactly as {@link prepareChatBody} does,
  * so this is safe to run over an already-prepared-or-not body.
  */
+/**
+ * Prepare a body for the **CN** endpoint.
+ *
+ * Until #87 the CN wire was the caller's body verbatim. The only difference
+ * now is the shared {@link dropUnsupportedEffort} strip, whose region scope was
+ * lifted once measurements showed this endpoint rejects `off` too.
+ *
+ * Deliberately **not** routed through {@link prepareChatBody}: the shim already
+ * applies it before handing the body to {@link WorkBuddyUpstreamClient.chatStream},
+ * and re-running it would be a second `stream`/`developer`/`tool_choice`
+ * normalisation of an already-normalised body. Only the strip belongs here.
+ *
+ * A body that is not a JSON object is returned unchanged, so this is safe to
+ * run over an already-prepared-or-not body.
+ */
+declare function prepareCnChatBody(source: string): string;
 declare function prepareInternationalChatBody(source: string): string;
 //#endregion
 //#region src/variants.d.ts
@@ -1276,6 +1342,12 @@ declare const WORKBUDDY_STREAM_IDLE_TIMEOUT_MS = 300000;
 interface WorkBuddyAdapterOptions {
   providerId?: string;
   displayName?: string;
+  /**
+   * Which endpoint this adapter serves, from the variant descriptor. Decides
+   * only whether the CN `onlyReasoning` veto hides `off` (#87); defaults to
+   * `'cn'`, the same legacy default `providerId` carries.
+   */
+  region?: WorkBuddyRegion;
   shim: WorkBuddyShim;
   store: WorkBuddyCredentialStore;
   catalog: WorkBuddyCatalog;
@@ -1645,4 +1717,4 @@ declare function visibilityAccountOf(credential: Pick<WorkBuddyCredential, 'uid'
  */
 declare function apply(ctx: Context, config: Config): void;
 //#endregion
-export { AI_VARIANT, type AppVersionInfo, CN_APP_VERSION_FILENAME, CN_VARIANT, type ChatIdentity, Config, FALLBACK_CN_APP_VERSION, FALLBACK_WORKBUDDY_AI_MODELS, FALLBACK_WORKBUDDY_MODELS, PROBE_EFFORT_CANDIDATES, type ProbeAttempt, type ProbeOutcome, type ProbeSender, type ResolveChatIdentityOptions, type UpstreamErrorKind, WORKBUDDY_AI_SETTINGS_NS, WORKBUDDY_APP_VERSION_FILENAME, WORKBUDDY_AUTH_FILENAME, WORKBUDDY_AUTH_FILE_ENV, WORKBUDDY_CATALOG_FILENAME, WORKBUDDY_HOST_HEARTBEAT_FILENAME, WORKBUDDY_PROBE_FILENAME, WORKBUDDY_PROVIDER, WORKBUDDY_SETTINGS_NS, WORKBUDDY_STREAM_IDLE_TIMEOUT_MS, WORKBUDDY_VARIANTS, WORKBUDDY_VISIBILITY_FILENAME, type WorkBuddyAdapter, type WorkBuddyAppVersionSource, type WorkBuddyAuthStatus, WorkBuddyCatalog, type WorkBuddyCatalogFetch, WorkBuddyCatalogStore, type WorkBuddyChatResult, type WorkBuddyCredential, WorkBuddyCredentialStore, type WorkBuddyCredits, type WorkBuddyEffort, type WorkBuddyHostHeartbeat, type WorkBuddyModelBilling, type WorkBuddyModelInfo, type WorkBuddyModelReasoning, type WorkBuddyProbeRecord, WorkBuddyProbeService, type WorkBuddyProbeStatus, WorkBuddyProbeStore, type WorkBuddyProbeValidation, type WorkBuddyPromotion, type WorkBuddyRefreshOutcome, type WorkBuddyShim, WorkBuddyUpstreamClient, type WorkBuddyUpstreamModel, type WorkBuddyVariant, WorkBuddyVisibilityStore, appUserAgent, apply, chatUserAgent, classifyUpstreamError, clearHostHeartbeat, createWorkBuddyAdapter, createWorkBuddyShim, defaultDesktopAuthCandidates, defaultDesktopAuthPath, desktopAuthCandidatesFor, fallbackChatIdentity, fingerprintModel, inject, installedAppVersion, isHeartbeatProcessAlive, modelWithCurrentPromotion, name, normalizeCredits, parseModelCatalog, parseWorkBuddyAuth, prepareChatBody, prepareInternationalChatBody, probeModel, processStartTimeMs, randomSentinel, readBundleVersion, readCliVersion, readHostHeartbeat, regionOf, resolveAppVersion, resolveChatIdentity, validAppVersion, validCliVersion, variantFor, visibilityAccountOf, workbuddyCatalogPath, workbuddyHostHeartbeatPath, workbuddyOwnAuthPath, workbuddyProbePath, workbuddyVisibilityPath };
+export { AI_VARIANT, type AppVersionInfo, CN_APP_VERSION_FILENAME, CN_VARIANT, type ChatIdentity, Config, FALLBACK_CN_APP_VERSION, FALLBACK_WORKBUDDY_AI_MODELS, FALLBACK_WORKBUDDY_MODELS, PROBE_EFFORT_CANDIDATES, type ProbeAttempt, type ProbeOutcome, type ProbeSender, type ResolveChatIdentityOptions, type UpstreamErrorKind, WORKBUDDY_AI_SETTINGS_NS, WORKBUDDY_APP_VERSION_FILENAME, WORKBUDDY_AUTH_FILENAME, WORKBUDDY_AUTH_FILE_ENV, WORKBUDDY_CATALOG_FILENAME, WORKBUDDY_HOST_HEARTBEAT_FILENAME, WORKBUDDY_PROBE_FILENAME, WORKBUDDY_PROVIDER, WORKBUDDY_SETTINGS_NS, WORKBUDDY_STREAM_IDLE_TIMEOUT_MS, WORKBUDDY_VARIANTS, WORKBUDDY_VISIBILITY_FILENAME, type WorkBuddyAdapter, type WorkBuddyAppVersionSource, type WorkBuddyAuthStatus, WorkBuddyCatalog, type WorkBuddyCatalogFetch, WorkBuddyCatalogStore, type WorkBuddyChatResult, type WorkBuddyCredential, WorkBuddyCredentialStore, type WorkBuddyCredits, type WorkBuddyEffort, type WorkBuddyHostHeartbeat, type WorkBuddyModelBilling, type WorkBuddyModelInfo, type WorkBuddyModelReasoning, type WorkBuddyProbeRecord, WorkBuddyProbeService, type WorkBuddyProbeStatus, WorkBuddyProbeStore, type WorkBuddyProbeValidation, type WorkBuddyPromotion, type WorkBuddyRefreshOutcome, type WorkBuddyShim, WorkBuddyUpstreamClient, type WorkBuddyUpstreamModel, type WorkBuddyVariant, WorkBuddyVisibilityStore, appUserAgent, apply, chatUserAgent, classifyUpstreamError, clearHostHeartbeat, createWorkBuddyAdapter, createWorkBuddyShim, defaultDesktopAuthCandidates, defaultDesktopAuthPath, desktopAuthCandidatesFor, fallbackChatIdentity, fingerprintModel, inject, installedAppVersion, isHeartbeatProcessAlive, modelWithCurrentPromotion, name, normalizeCredits, parseModelCatalog, parseWorkBuddyAuth, prepareChatBody, prepareCnChatBody, prepareInternationalChatBody, probeModel, processStartTimeMs, randomSentinel, readBundleVersion, readCliVersion, readHostHeartbeat, regionOf, resolveAppVersion, resolveChatIdentity, validAppVersion, validCliVersion, variantFor, visibilityAccountOf, workbuddyCatalogPath, workbuddyHostHeartbeatPath, workbuddyOwnAuthPath, workbuddyProbePath, workbuddyVisibilityPath };

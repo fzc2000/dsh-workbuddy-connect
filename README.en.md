@@ -20,6 +20,8 @@ Both the CN **WorkBuddy** and the international **WorkBuddy AI** apps are suppor
 
 - **Reasoning levels**: levels explicitly declared by WorkBuddy appear directly — for example, GLM-5.3 and GLM-5.3-Flash offer low / high / max. For some models that do not declare selectable levels, Web and Desktop provide a **Reasoning levels** control in the model picker for a manual check. It sends a few requests and may consume credit. Models without a check result or selectable levels continue to use WorkBuddy's default.
 
+- **Balance at a glance**: when a WorkBuddy / WorkBuddy AI model is selected, the composer shows the account's remaining credit next to the model selector (e.g. `WB.3,401 credits`, `WB AI.3,401 credits` on the international app). Credit is not polled automatically (every status read performs a real billing query): one read on mount, then refresh on demand with the ↻ beside it.
+
 - **Status and detection**: Settings → Plugins → the matching card shows the account, token validity, remaining credit, and model offers (on DSH `0.1.6+` the entry lives in the left sidebar Plugins panel — see the version table below). It also lets you refresh the model list manually and shows whether the current list came from the upstream or from the built-in fallback, and provides manual reasoning-level detection for eligible models.
 
 - **Model visibility**: both WorkBuddy and WorkBuddy AI cards (Context window tab) let you check which models appear in the model picker. Hidden lists are **saved per signed-in account**: switching accounts switches to that account's own list, switching back restores it; new accounts and newly added models are visible by default. Hiding only affects pickability — **existing chats using a hidden model keep working**.
@@ -60,7 +62,8 @@ Prerequisite: the WorkBuddy desktop app is installed and signed in. The plugin r
 
 | Plugin | Required DSH core | Desktop app |
 |---|---|---|
-| **0.7.1 (current stable)** | **supports `0.2.0-rc.2` only** (`0.2.0-rc.1` users should stay on `0.7.0`), and narrows the `@earendil-works/pi-ai` peer from `^0.85.1 \|\| ^0.87.1` to **`^0.87.1`**: pnpm profiles upgraded in place from `0.6.x` no longer keep a stale `pi-ai@0.85.1` that still satisfies the range and re-creates the two-generation mixing of [#69](https://github.com/corrinehu/dsh-workbuddy-connect/issues/69) ([#74](https://github.com/corrinehu/dsh-workbuddy-connect/issues/74)). **The in-place upgrade from `0.6.5` is verified**: after editing `package.json` and running `pnpm install`, the plugin resolves `pi-ai@0.87.1` with no overrides; the old dual-arm behavior of `0.7.0` admitting `0.85.1` was reproduced as the control. | desktop builds bundling the `0.2.0-rc.2` core (preview / nightly) |
+| **0.7.2** | **supports `0.2.0-rc.2` only** (`0.2.0-rc.1` users should stay on `0.7.0`), and moves `@earendil-works/pi-ai` from a **peer to a regular dependency the plugin ships** (pinned to `0.87.1`): the plugin no longer relies on the copy at the profile's top level, so another package's older copy (e.g. `0.82.x`) cannot shadow it and load the wrong version ([#92](https://github.com/corrinehu/dsh-workbuddy-connect/issues/92)). **On a normal, correct install** it resolves the copy it installed; what resolves still depends on the installer and the profile layout, and the plugin warns at load if a mismatch is found. Also fixes rejected CN `Off` / `Default` requests ([#87](https://github.com/corrinehu/dsh-workbuddy-connect/issues/87)) and Windows uninstall-record encoding ([#88](https://github.com/corrinehu/dsh-workbuddy-connect/issues/88)). | desktop builds bundling the `0.2.0-rc.2` core (preview / nightly) |
+| **0.7.1 (historical)** | supports `0.2.0-rc.2` only, and narrows the `@earendil-works/pi-ai` peer from `^0.85.1 \|\| ^0.87.1` to **`^0.87.1`**: pnpm profiles upgraded in place from `0.6.x` no longer keep a stale `pi-ai@0.85.1` that still satisfies the range and re-creates the two-generation mixing of [#69](https://github.com/corrinehu/dsh-workbuddy-connect/issues/69) ([#74](https://github.com/corrinehu/dsh-workbuddy-connect/issues/74)). **The in-place upgrade from `0.6.5` is verified**: after editing `package.json` and running `pnpm install`, the plugin resolves `pi-ai@0.87.1` with no overrides; the old dual-arm behavior of `0.7.0` admitting `0.85.1` was reproduced as the control. This release still used pi-ai as a **peer**, i.e. the profile's top-level copy — a limitation fixed in `0.7.2` | desktop builds bundling the `0.2.0-rc.2` core (preview / nightly) |
 | **0.7.0 (the 0.2.0-era debut)** | **supports `0.2.0-rc.1` / `0.2.0-rc.2` only** (`0.1.5` / `0.1.6` / `0.1.7` are no longer covered — those users should stay on `0.6.5`), verified on a real `0.2.0-rc.2` host (web: loading, both CN and international catalogs, encrypted credentials, status routes all fine). This is the release that adapts to DSH `0.2.0`'s settings-service rework — `0.2.0` replaced the service with a Config-derived form facade that no longer installs sections, so earlier releases lose their settings there. **`0.7.1` drops `rc.1`** | desktop builds bundling the `0.2.0` core (preview / nightly) |
 | **0.6.0 (dual-UI adaptive)** | `0.1.5-rc.1` / `rc.2` / `rc.3`; the `0.1.6-alpha` line (incl. `alpha.1` / `alpha.2`) and `0.1.6` stable; verified against `0.1.7-alpha.1` (`0.1.7` stable is inside the range too). **Subsequent `0.1.x` prereleases (e.g. `0.1.8-alpha.x`) DO fall inside the `^0.1.7-alpha.1` arm** — the host's compatibility check resolves peer ranges with includePrerelease semantics (our earlier "not covered" claim was wrong; corrected here); prereleases crossing into `0.2.0` are the ones that need an explicit peer-range extension | `2.0.7`+ works today; desktop builds bundling `0.1.6+` will work too |
 | **0.6.5 (final release of the `0.1.x` line)** | adds `0.2.0-rc.1` on top of the `0.6.0` surface (`0.1.5` / `0.1.6` / `0.1.7` / `0.2.0-rc.1`), verified on a real `0.2.0-rc.1` host (web: loading, catalogs, encrypted credentials, chat & image round-trips all fine). Releases up to and including `0.6.4` do not carry that range and are skipped wholesale by DSH `0.2.0-rc.1` (see [#63](https://github.com/corrinehu/dsh-workbuddy-connect/issues/63)) | desktop builds bundling `0.1.x` cores (incl. the released `2.0.7`+ line); `0.2.0-rc.1` works too (verified on web; desktop not yet verified) |
@@ -96,14 +99,53 @@ Prerequisite: the WorkBuddy desktop app is installed and signed in. The plugin r
   ```
 
 - From `0.6.0` on, the Models settings page no longer shows the non-editable WorkBuddy / WorkBuddy AI cards (consistent across both core generations); the model picker, `/model`, and chat calls are unaffected.
-- On DSH `0.2.0-rc.2`, just install the latest: `dsh plugin --profile web add dsh-workbuddy-connect`; on `0.2.0-rc.1`, stay on `0.7.0`: `dsh plugin --profile web add dsh-workbuddy-connect@0.7.0`
-- pnpm profiles upgraded in place from `0.6.x` (with a manually installed `pi-ai@0.85.1`): on `0.7.1+` the peer range no longer admits `0.85.1`, so `pnpm install` moves the plugin onto the host's `0.87.1`; the temporary `overrides: {'@earendil-works/pi-ai': 0.87.1}` from [#74](https://github.com/corrinehu/dsh-workbuddy-connect/issues/74) can be removed
+- On DSH `0.2.0-rc.2`, install `0.7.2`: `dsh plugin --profile web add dsh-workbuddy-connect@0.7.2`; on `0.2.0-rc.1`, stay on `0.7.0`: `dsh plugin --profile web add dsh-workbuddy-connect@0.7.0`
+- pnpm profiles upgraded in place from `0.6.x` (with a manually installed `pi-ai@0.85.1`): on `0.7.1` the peer range no longer admits `0.85.1`, so `pnpm install` moves the plugin onto the host's `0.87.1`; the temporary `overrides: {'@earendil-works/pi-ai': 0.87.1}` from [#74](https://github.com/corrinehu/dsh-workbuddy-connect/issues/74) can be removed
+- **Do not upgrade the profile-level `@earendil-works/pi-ai` to 1.x**: this plugin and the `0.2.0-rc.2` DSH core both require `^0.87.1` (from `0.7.2` the plugin ships its own copy, see `dependencies` in `package.json`; `0.7.1` and earlier declared it under `peerDependencies`). Upgrading to 1.x may make the plugin load an incompatible version and leave different pi-ai versions coexisting in the install tree. **Some third-party plugin managers (e.g. `@linxin666/dsh-client-ui-plugin-manager@0.4.5`) decide "updates" from third-party packages and `dsh.engines.dsh` alone, without checking peer constraints**, so they may list `pi-ai` as updatable — do not act on that prompt (see [#86](https://github.com/corrinehu/dsh-workbuddy-connect/issues/86))
+- Before upgrading `0.7.1` → `0.7.2`, confirm the host core is `0.2.0-rc.2` (`0.7.2` supports `rc.2` only; users still on `rc.1` should stay on `0.7.0`). Now that the plugin ships pi-ai itself, any `overrides: {'@earendil-works/pi-ai': 0.87.1}` added to the profile for [#74](https://github.com/corrinehu/dsh-workbuddy-connect/issues/74) / [#82](https://github.com/corrinehu/dsh-workbuddy-connect/issues/82) should **not be removed blindly** — if other plugins still rely on it to resolve the right version, dropping it may affect them; check that those plugins and DSH itself all resolve correctly before cleaning up, and keep it when unsure (it no longer conflicts with this plugin)
 - Still on DSH `0.1.5` / `0.1.6` / `0.1.7`? Stay on `0.6.5`: `dsh plugin --profile web add dsh-workbuddy-connect@0.6.5`
 - Still on DSH `0.1.2-rc.1`? Stay on `0.3.1`: `dsh plugin --profile web add dsh-workbuddy-connect@0.3.1`
 - Still on DSH `0.1.1-rc.2`? Stay on the older release: `dsh plugin --profile web add dsh-workbuddy-connect@0.2.6`
-- Pick the desktop plugin version by the **bundled core**: desktop builds bundling `0.1.x` cores (incl. the released `2.0.7`+ line) should use `dsh-workbuddy-connect@0.6.5`; desktop builds bundling the `0.2.0` core (preview / nightly) should use the latest; `2.0.5` and earlier apps (bundled `0.1.2-rc.1`) should stay on `0.3.1`
+- Pick the desktop plugin version by the **bundled core**: desktop builds bundling `0.1.x` cores (incl. the released `2.0.7`+ line) should use `dsh-workbuddy-connect@0.6.5`; desktop builds bundling the `0.2.0-rc.2` core should use `0.7.2`, and those bundling `0.2.0-rc.1` should use `0.7.0` (preview / nightly); `2.0.5` and earlier apps (bundled `0.1.2-rc.1`) should stay on `0.3.1`
 
-The plugin runs under all three DSH interfaces: **Web**, **Desktop**, and **TUI**. Pick the install command that matches the profile you use.
+The plugin runs under all three DSH interfaces: **Web**, **Desktop**, and **TUI**.
+
+**Recommended: hand the install to an Agent.** No manual commands needed — paste the brief below verbatim to your AI assistant (the built-in DSH agent, Claude Code, Codex, Cursor, …) and let it pick the right mechanism, the right version, and verify the result for your environment:
+
+```markdown
+Please install the DSH (DeepSeek Harness) plugin dsh-workbuddy-connect for me and verify it afterwards.
+
+Constraints and facts:
+- The plugin version must match the DSH core. Check the core version first — mind the source:
+  for Web / TUI read the standalone CLI's `dsh --version`; for the Desktop app you must confirm
+  its **bundled DSH core version** (the desktop app's About page) — never substitute the standalone
+  CLI's version for the desktop app's core.
+  Core `0.2.0-rc.2` -> install `0.7.2`; core `0.2.0-rc.1` -> pin `0.7.0`; cores `0.1.5`-`0.1.7` -> pin `0.6.5`;
+  older cores follow the version table in the README at
+  https://github.com/corrinehu/dsh-workbuddy-connect.
+- The interface I use is: (tell the Agent one of: Web / Desktop app / TUI)
+- Web: run `dsh plugin --profile web add dsh-workbuddy-connect` (append `@<version>` to pin).
+- TUI: run `dsh plugin --profile dsh-tui add dsh-workbuddy-connect`; that profile requires pnpm 11.
+- Desktop app: the `desktop` profile is managed exclusively by the Electron app — any
+  `dsh plugin --profile desktop ...` command is rejected by the CLI with
+  `profile "desktop" is managed exclusively by the Electron application`.
+  Preferred: guide me through the desktop app's built-in plugin manager. If going through the file
+  route instead, every step matters: (1) confirm the profile directory the desktop app actually
+  uses (default `~/.dsh/profiles/desktop`, on Windows `%USERPROFILE%\.dsh\profiles\desktop` —
+  verify against reality); (2) have me fully quit the desktop app; (3) back up `package.json` and
+  `pnpm-lock.yaml` in that directory; (4) add `"dsh-workbuddy-connect": "<version>"` to
+  dependencies; (5) install in that directory with the pnpm matching the profile (prefer the pnpm
+  bundled with the desktop app; a mismatched one may fail with store errors — switch versions per
+  the error message and retry); (6) relaunch the desktop app.
+- Verification: after restarting the interface, the model picker should show the
+  "WorkBuddy / WorkBuddy AI" groups — with only the CN or only the international app installed,
+  verify just the corresponding group. Groups and credit being visible only proves the plugin
+  loaded and the catalog and account were read; pick one model from the group and finish a short
+  conversation — a normal reply is what counts as a working integration.
+```
+
+<details>
+<summary>Manual install (command line, Web / TUI only)</summary>
 
 ```sh
 # Web (recommended; ships prebuilt artifacts)
@@ -113,19 +155,15 @@ dsh web
 # or install the Web version from the GitHub source
 dsh plugin --profile web add github:corrinehu/dsh-workbuddy-connect
 dsh web
-```
 
-```sh
-# Desktop (the DSH Desktop app)
-dsh plugin --profile desktop add dsh-workbuddy-connect
-dsh --profile desktop
-```
-
-```sh
 # TUI (terminal UI)
 dsh plugin --profile dsh-tui add dsh-workbuddy-connect
 dsh --profile dsh-tui
 ```
+
+The Desktop app does not install via the command line: the `desktop` profile is managed exclusively by the Electron app and the CLI rejects it outright (`profile "desktop" is managed exclusively by the Electron application`). Use the desktop app's built-in plugin manager instead.
+
+</details>
 
 > **TUI users, check the version pairing**: the terminal UI package (`@deepseek-harness-tui/dsh-tui`) must be **`0.10.0-beta.5` or newer** — older versions fail at startup with `events is not iterable` when this plugin is installed. Update the shell first (via its built-in update command or a fresh install), then add this plugin; the newest release is a beta, and a stable one will work the same way.
 
@@ -137,7 +175,7 @@ After installing, switch to a WorkBuddy model in the model picker of the interfa
 
 ## CLI
 
-`dsh plugin --profile <web|desktop|dsh-tui> exec dsh-workbuddy-connect status`: sign-in state and remaining credit (`--json` for machine-readable output; `doctor` for diagnostics and `logout` for credential cleanup are also available).
+`dsh plugin --profile <web|dsh-tui> exec dsh-workbuddy-connect status`: sign-in state and remaining credit (`--json` for machine-readable output; `doctor` for diagnostics and `logout` for credential cleanup are also available). The `desktop` profile is managed exclusively by the desktop app, so the CLI (including `exec`) does not work against it.
 
 Both commands target the CN version by default; add `--provider workbuddy-ai` for the international one:
 
