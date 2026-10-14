@@ -852,6 +852,13 @@ interface WorkBuddyAtRestKeyProviderOptions {
   /** Platform override for deterministic discovery tests. */
   platform?: NodeJS.Platform;
   /**
+   * Whether the helper spawn crosses WSL→Windows interop. Injectable so tests
+   * can simulate a WSL host on any platform; defaults to the shared
+   * {@link isWsl} check. Only consulted for the key-helper spawn (#133) —
+   * never for discovery.
+   */
+  wsl?: () => boolean;
+  /**
    * Total budget for one discovery run, covering the search and every
    * candidate check. Injectable so tests can exercise exhaustion without
    * waiting out the production 10s.
@@ -878,6 +885,7 @@ interface WorkBuddyAtRestKeyProviderOptions {
   private readonly platform;
   private readonly discoveryBudgetMs;
   private readonly timeoutMs;
+  private readonly wsl;
   private readonly source;
   private readonly spawnHelper;
   /**
