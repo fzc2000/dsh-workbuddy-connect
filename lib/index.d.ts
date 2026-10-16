@@ -508,6 +508,13 @@ declare class WorkBuddyUpstreamClient {
    * advertises is exactly the one its own requests can use. The international
    * variant has no CLI identity, so it keeps the App-shaped UA.
    *
+   * The same split has an account-identity axis (issue #123): an enterprise
+   * account must also present `X-User-Id` + `X-Enterprise-Id`, or the gateway
+   * answers with the personal roster. CN sends that pair via
+   * {@link identityHeaders} whenever the credential carries both halves; the
+   * international gateway's split was never measured against account headers,
+   * so it keeps its documented shape.
+   *
    * Membership is the `cli` roster intersected with the usable rows (see
    * {@link parseModelCatalog}); the promo badges the product document does
    * not carry are merged in from a best-effort console read — see
