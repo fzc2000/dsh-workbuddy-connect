@@ -2,6 +2,11 @@
 
 [English](./README.en.md) | 中文
 
+> **社区维护 fork。** 原项目 [dsh-workbuddy-connect](https://www.npmjs.com/package/dsh-workbuddy-connect)（作者 corrinehu，MIT）已停止维护，原 GitHub 仓库已删除。
+> 本仓库由 [fzc2000](https://github.com/fzc2000) 接手维护，以 `dsh-workbuddy-connect-next` 发布到 npm。
+> git 历史从 npm 上原包的全部 32 个已发布版本逐个导入（标签 `upstream/v*`），内容与注册表 tarball 完全一致。
+> 原包只发布了编译产物，没有 TypeScript 源码，所以本仓库目前直接维护 `lib/` 下的 JS。
+
 将已登录的 WorkBuddy / WorkBuddy AI 桌面应用中可用的模型接入 DeepSeek Harness；两版分别显示各自的模型分组，并沿用各自的账号登录与积分。
 
 ## 安装
@@ -11,9 +16,9 @@
 **推荐：把安装交给本机已有的 Agent**——任何具备终端与文件操作能力的助手（DSH Agent、Codex、Claude Code、Cursor 等）都可以，把下面这段话原样发给它：
 
 ```text
-请帮我安装并验证 DSH（DeepSeek Harness）插件 dsh-workbuddy-connect（项目地址：https://github.com/corrinehu/dsh-workbuddy-connect）：
+请帮我安装并验证 DSH（DeepSeek Harness）插件 dsh-workbuddy-connect-next（项目地址：https://github.com/fzc2000/dsh-workbuddy-connect）：
 先阅读项目 README，确认我实际使用的界面（Web / Desktop / TUI）与 DSH 内核版本，桌面版以 App 内置核心为准，不要用独立 CLI 的版本代替；
-再按版本对应关系从 npm 正式包安装（0.2.1-rc.2→0.7.9、0.2.1-rc.1→0.7.7、0.2.0-rc.2→0.7.6、rc.1→0.7.0、0.1.5–0.1.7→0.6.5），优先走本机受支持的非插件市场渠道；部分 Desktop 发行版（尤其官方 Electron 版）的 profile 由 App 管理，各发行版规则未必相同，先确认我所用的发行版，再探查其合规的安装方式，但不得绕过其校验；
+再按版本对应关系从 npm 正式包安装（0.2.1-rc.2→dsh-workbuddy-connect-next@0.7.10；更老内核用原包 dsh-workbuddy-connect：0.2.1-rc.1→0.7.7、0.2.0-rc.2→0.7.6、rc.1→0.7.0、0.1.5–0.1.7→0.6.5），优先走本机受支持的非插件市场渠道；部分 Desktop 发行版（尤其官方 Electron 版）的 profile 由 App 管理，各发行版规则未必相同，先确认我所用的发行版，再探查其合规的安装方式，但不得绕过其校验；
 任何本地文件或配置改动，先征得我同意并做好备份；
 装完后验证模型选择器里出现 WorkBuddy 分组，并陪我完成一次简短对话；
 若 Desktop 安装仍因 generation 校验失败（如 @types/retry 误报），请如实报告、参照上游 dataelement/dsh-desktop#688，并建议我改用独立的 Web / TUI，不要修改依赖包或绕过校验。
@@ -23,21 +28,21 @@
 
 | DSH 内核 | 推荐插件版 |
 |---|---|
-| 0.2.1-rc.2 | 0.7.9（npm latest） |
-| 0.2.1-rc.1 | 0.7.7 |
-| 0.2.0-rc.2 | 0.7.6 |
-| 0.2.0-rc.1 | 0.7.0 |
-| 0.1.5 – 0.1.7 | 0.6.5 |
+| 0.2.1-rc.2 | `dsh-workbuddy-connect-next@0.7.10`（本 fork，npm latest） |
+| 0.2.1-rc.1 | 原包 `dsh-workbuddy-connect@0.7.7` |
+| 0.2.0-rc.2 | 原包 `dsh-workbuddy-connect@0.7.6` |
+| 0.2.0-rc.1 | 原包 `dsh-workbuddy-connect@0.7.0` |
+| 0.1.5 – 0.1.7 | 原包 `dsh-workbuddy-connect@0.6.5` |
 
 <details>
 <summary>手动安装（命令行，仅 Web / TUI）</summary>
 
 ```sh
-# Web（按实际内核固定版本，示例为 0.2.1-rc.2 → 0.7.9；也可用 github:corrinehu/dsh-workbuddy-connect 从源码安装）
-dsh plugin --profile web add dsh-workbuddy-connect@0.7.9
+# Web（按实际内核固定版本，示例为 0.2.1-rc.2 → 0.7.10；也可用 github:fzc2000/dsh-workbuddy-connect 从仓库安装）
+dsh plugin --profile web add dsh-workbuddy-connect-next@0.7.10
 dsh web
 
-# TUI（示例为 0.1.x 内核；该 profile 需用 pnpm 11 安装，如 npx pnpm@11）
+# TUI（示例为 0.1.x 内核，用原包旧版；该 profile 需用 pnpm 11 安装，如 npx pnpm@11）
 dsh plugin --profile dsh-tui add dsh-workbuddy-connect@0.6.5
 dsh --profile dsh-tui
 ```
@@ -101,13 +106,13 @@ WorkBuddy 中模型的推理档位信息目前分散在上游接口与客户端�
 
 ## 命令行
 
-`dsh plugin --profile <web|dsh-tui> exec dsh-workbuddy-connect status`：登录状态与剩余积分（`--json` 输出机器可读格式；另有 `doctor` 诊断、`logout` 清理凭据）。`desktop` profile 一般由桌面 App 管理，CLI（含 `exec`）对其不可用（见安装章节的 Desktop 说明）。
+`dsh plugin --profile <web|dsh-tui> exec dsh-workbuddy-connect-next status`：登录状态与剩余积分（`--json` 输出机器可读格式；另有 `doctor` 诊断、`logout` 清理凭据）。`desktop` profile 一般由桌面 App 管理，CLI（含 `exec`）对其不可用（见安装章节的 Desktop 说明）。
 
 默认操作国内版；加 `--provider workbuddy-ai` 操作国际版：
 
 ```sh
-dsh plugin --profile web exec dsh-workbuddy-connect status --provider workbuddy-ai
-dsh plugin --profile web exec dsh-workbuddy-connect doctor --provider workbuddy-ai
+dsh plugin --profile web exec dsh-workbuddy-connect-next status --provider workbuddy-ai
+dsh plugin --profile web exec dsh-workbuddy-connect-next doctor --provider workbuddy-ai
 ```
 
 `logout` 只删除该版插件自留的凭据副本，不动桌面 App 自己的登录，也不承诺一定让模型分组消失（App 的凭据文件仍在时依然生效）。
@@ -129,7 +134,7 @@ dsh plugin --profile web exec dsh-workbuddy-connect doctor --provider workbuddy-
 
 | DSH 内核 | 推荐插件版 | 注意事项 |
 |---|---|---|
-| `0.2.1-rc.2` | `0.7.9` | 仅适配这一内核；`0.2.0-rc.2` 与 `0.2.1-rc.2` 不同，请核对 App 内置版本。 |
+| `0.2.1-rc.2` | `dsh-workbuddy-connect-next@0.7.10` | 本 fork；功能同原包 0.7.9。仅适配这一内核；`0.2.0-rc.2` 与 `0.2.1-rc.2` 不同，请核对 App 内置版本。 |
 | `0.2.1-rc.1` | `0.7.7` | 内核升级到 `@earendil-works/pi-ai` 1.3.0，插件同步自带 1.3.0，历史遗留的 0.87.1 overrides 必须移除（见下方 pi-ai 说明）。 |
 | `0.2.0-rc.2` | `0.7.6` | 上一代内核线；修复企业账号模型目录缺项与国际版对话被渠道校验拦截，勿停留在有注册表回归的 0.7.2。 |
 | `0.2.0-rc.1` | `0.7.0` | 0.7.1 起不再支持 rc.1，请停留本版。 |
@@ -137,7 +142,11 @@ dsh plugin --profile web exec dsh-workbuddy-connect doctor --provider workbuddy-
 | `0.1.2-rc.1` | `0.3.1` | 更早旧线，仅历史维护。 |
 | `0.1.1-rc.2` | `0.2.6` | 更早旧线，仅历史维护。 |
 
-历次更新（完整记录见 [releases](https://github.com/corrinehu/dsh-workbuddy-connect/releases)）：
+表中 `0.7.9` 及以下版本均为原包 `dsh-workbuddy-connect`（已停止维护，npm 上仍可安装）。
+
+历次更新（fork 的记录见 [releases](https://github.com/fzc2000/dsh-workbuddy-connect/releases)；0.7.9 及以前的 issue / PR 链接指向已删除的原仓库，仅作历史参考）：
+
+- **0.7.10**（fork 首版）：原作者停止维护后由 fzc2000 接手。包名改为 `dsh-workbuddy-connect-next`，仓库、更新检查（npm dist-tags 与 GitHub Releases）指向新地址；功能代码与原包 0.7.9 相同。若之前装过原包，请先移除 `dsh-workbuddy-connect` 再安装本包，两者不能同时启用。
 
 - **0.7.9**：恢复 DSH 0.2.1-rc.2 上国际版最大上下文窗口开关，修复延迟初始化及设置持久化（PR [#172](https://github.com/corrinehu/dsh-workbuddy-connect/pull/172)，by @1Dreamer666）；避免本地服务绑定到 fetch 禁用端口导致国际版 502（PR [#164](https://github.com/corrinehu/dsh-workbuddy-connect/pull/164)，by @Xiong-Ziyi）；同名积分包合并展示，减少重复条目。
 - **0.7.8**：适配 DSH 0.2.1-rc.2；将官方原子写入工具打包到插件，避免依赖宿主暴露该模块；更新国内模型目录快照，区分 Hy3 / Hy3-X；优化推理检测结果展示，调整积分刷新按钮位置并修正悬停提示。感谢 @chenpiyanghappy 的 PR [#156](https://github.com/corrinehu/dsh-workbuddy-connect/pull/156)。
@@ -151,7 +160,7 @@ dsh plugin --profile web exec dsh-workbuddy-connect doctor --provider workbuddy-
 - **0.7.0**：适配 DSH 0.2.0 的设置服务改造，不再支持 0.1.x。
 - **0.6.5**：0.1.x 线最终版本。
 
-固定版本安装示例：`dsh plugin --profile web add dsh-workbuddy-connect@0.7.9`。
+固定版本安装示例：`dsh plugin --profile web add dsh-workbuddy-connect-next@0.7.10`。
 
 **pi-ai 版本按内核线区分，不能混**：0.2.1-rc.1 / rc.2 内核线（分别对应插件 0.7.7 / 0.7.8–0.7.9）已升级到 `@earendil-works/pi-ai` 1.3.0（由插件自带），profile 级历史遗留的 `overrides: {'@earendil-works/pi-ai': '0.87.1'}` **必须移除**，否则插件会因加载到旧一代 pi-ai 而启动失败；0.2.0-rc.2 内核线（插件 0.7.6）仍要求 `^0.87.1`，在这条线上**不要**把 profile 级的 pi-ai 升到 1.x，第三方插件管理器的「可更新」提示不校验 peer 约束、不能照做（[#86](https://github.com/corrinehu/dsh-workbuddy-connect/issues/86)）。
 
